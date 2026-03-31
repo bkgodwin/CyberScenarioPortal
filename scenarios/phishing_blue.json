@@ -1,0 +1,162 @@
+{
+  "id": "phishing_blue",
+  "title": "Defending Against a Phishing Attack",
+  "description": "You are a Blue Team SOC analyst. Suspicious activity has been flagged. Investigate and respond to a phishing campaign targeting your organization.",
+  "role": "blue",
+  "phases": [
+    {
+      "id": "detection",
+      "name": "Phase 1: Initial Detection",
+      "narrative": "Your SIEM has triggered an alert: 'Multiple failed O365 login attempts detected for CFO account from unusual geographic location.' The timestamp shows this began 10 minutes ago. What do you do first?",
+      "logs": [
+        {"time": "08:42:01", "source": "O365 Defender", "event": "Failed login attempt - user: jsmith@company.com - IP: 185.220.101.45 (TOR exit node) - Location: Romania"},
+        {"time": "08:42:15", "source": "O365 Defender", "event": "Failed login attempt - user: jsmith@company.com - IP: 185.220.101.45 - Attempt 2/5"},
+        {"time": "08:43:02", "source": "Email Gateway", "event": "Inbound email flagged: Subject='Invoice #4521 - Urgent' Attachment: Invoice_4521.xlsm - Sender: vendor@acme-supplies.net (DMARC FAIL)"},
+        {"time": "08:44:30", "source": "O365 Defender", "event": "Suspicious macro execution detected in Excel process on DESKTOP-CFO01"}
+      ],
+      "choices": [
+        {
+          "id": "block_ip",
+          "text": "Immediately block the suspicious IP in the firewall and investigate the logs",
+          "outcome": "Good immediate response! The TOR exit node IP is blocked. You review logs and discover the DMARC-failing email with a macro-enabled attachment. The attack vector becomes clear.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "containment"
+        },
+        {
+          "id": "wait_monitor",
+          "text": "Continue monitoring without blocking - gather more intelligence",
+          "outcome": "Passive approach costs time. While you monitor, the CFO enables the macro. The attacker achieves persistence. Incident escalates. Early blocking would have prevented this.",
+          "score_impact": -10,
+          "is_correct": false,
+          "next_phase": "containment"
+        },
+        {
+          "id": "alert_user",
+          "text": "Immediately contact the CFO to verify the email and halt any action",
+          "outcome": "Excellent user communication! You call the CFO who confirms they received a suspicious invoice email but hasn't opened it yet. You've prevented execution at the last moment.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "containment"
+        }
+      ]
+    },
+    {
+      "id": "containment",
+      "name": "Phase 2: Containment",
+      "narrative": "Investigation confirms a phishing email with a macro-enabled attachment was delivered to the CFO. The email bypassed DMARC. SIEM shows the CFO's machine (DESKTOP-CFO01) made an outbound connection to 185.220.101.45:4444. How do you contain this?",
+      "logs": [
+        {"time": "08:45:01", "source": "Firewall", "event": "OUTBOUND ALLOWED - src: 10.0.1.50 (DESKTOP-CFO01) - dst: 185.220.101.45:4444 - Proto: TCP - Bytes: 2048"},
+        {"time": "08:45:02", "source": "EDR Agent", "event": "Process tree: EXCEL.EXE -> cmd.exe -> powershell.exe -enc [base64 payload]"},
+        {"time": "08:45:05", "source": "EDR Agent", "event": "Network connection: powershell.exe -> 185.220.101.45:4444 (C2 communication suspected)"},
+        {"time": "08:45:10", "source": "EDR Agent", "event": "Registry modification: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run - persistence key added"}
+      ],
+      "choices": [
+        {
+          "id": "isolate_machine",
+          "text": "Immediately isolate DESKTOP-CFO01 from the network and disable the account",
+          "outcome": "Correct! Network isolation cuts the C2 channel. Account disable prevents credential misuse. You've contained the threat and preserved evidence for forensics.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "eradication"
+        },
+        {
+          "id": "just_block_outbound",
+          "text": "Block outbound port 4444 at the firewall only",
+          "outcome": "Partial containment. The C2 channel on 4444 is blocked, but the attacker pivots to port 443 (HTTPS). The endpoint remains compromised. Insufficient response.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "eradication"
+        },
+        {
+          "id": "reimage",
+          "text": "Immediately reimage the workstation without forensic capture",
+          "outcome": "Too hasty! While this removes the malware, you destroyed forensic evidence needed to understand the full scope of compromise. No artifacts remain for analysis.",
+          "score_impact": -5,
+          "is_correct": false,
+          "next_phase": "eradication"
+        }
+      ]
+    },
+    {
+      "id": "eradication",
+      "name": "Phase 3: Eradication & Investigation",
+      "narrative": "The CFO's machine is isolated. Forensic analysis reveals the attacker established persistence via a registry run key. O365 audit logs show the attacker accessed the CFO's emails for 8 minutes before containment. What's your eradication strategy?",
+      "logs": [
+        {"time": "08:46:00", "source": "O365 Audit", "event": "Mailbox access: jsmith@company.com accessed by suspicious session - 47 emails read including subject 'Q4 Financial Report'"},
+        {"time": "08:46:10", "source": "O365 Audit", "event": "File download: SharePoint - 'Q4_Budget_2024.xlsx' downloaded via suspicious session"},
+        {"time": "08:47:00", "source": "EDR Forensics", "event": "Registry persistence: HKCU\\Run\\WindowsUpdate = powershell.exe -WindowStyle Hidden -enc [payload]"},
+        {"time": "08:47:30", "source": "EDR Forensics", "event": "Scheduled task created: 'MicrosoftEdgeUpdate' running hourly - secondary persistence mechanism"}
+      ],
+      "choices": [
+        {
+          "id": "full_remediation",
+          "text": "Reset CFO O365 password, revoke all sessions, remove registry keys, delete scheduled tasks, reimage workstation",
+          "outcome": "Comprehensive eradication! All persistence mechanisms removed. O365 access revoked. The attacker has been fully evicted. Excellent systematic approach.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "recovery"
+        },
+        {
+          "id": "partial_fix",
+          "text": "Reset the password and remove the registry key only",
+          "outcome": "Incomplete! The scheduled task secondary persistence remains active. The attacker regains access 1 hour later via the 'MicrosoftEdgeUpdate' task. Re-compromise occurred.",
+          "score_impact": -10,
+          "is_correct": false,
+          "next_phase": "recovery"
+        },
+        {
+          "id": "scan_only",
+          "text": "Run AV scan and clean detected malware, keep the machine online",
+          "outcome": "AV removes the known malware but misses the scheduled task (fileless component). Rootkit persistence remains. The system appears clean but is still compromised.",
+          "score_impact": -5,
+          "is_correct": false,
+          "next_phase": "recovery"
+        }
+      ]
+    },
+    {
+      "id": "recovery",
+      "name": "Phase 4: Recovery & Hardening",
+      "narrative": "The immediate threat is contained and eradicated. Now you need to prevent recurrence and restore normal operations. What hardening measures do you implement?",
+      "logs": [
+        {"time": "09:00:00", "source": "SOC Manager", "event": "Incident escalated to CISO - data exfiltration confirmed (financial documents)"},
+        {"time": "09:05:00", "source": "IT Security", "event": "Similar phishing emails found in 3 other employee inboxes - campaign confirmed"},
+        {"time": "09:10:00", "source": "Email Gateway", "event": "Threat intel feed updated - 185.220.101.45 added to blocklist"}
+      ],
+      "choices": [
+        {
+          "id": "mfa_policy",
+          "text": "Enforce MFA for all O365 accounts, implement DMARC enforcement, and conduct phishing awareness training",
+          "outcome": "Excellent preventive measures! MFA prevents credential compromise even if passwords are stolen. DMARC enforcement blocks spoofed emails. Training reduces human risk. Comprehensive hardening.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "complete"
+        },
+        {
+          "id": "just_training",
+          "text": "Send a company-wide email warning about phishing",
+          "outcome": "Awareness helps but is insufficient alone. No technical controls implemented. The next phishing campaign could succeed just as easily. Minimal impact on security posture.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "complete"
+        },
+        {
+          "id": "block_macros",
+          "text": "Disable Office macros via Group Policy, implement attack surface reduction rules, enforce MFA",
+          "outcome": "Strong technical hardening! Disabling macros eliminates this attack vector entirely. ASR rules provide defense in depth. MFA protects credentials. Well-rounded response.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "complete"
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "name": "Incident Resolved",
+      "narrative": "You have successfully investigated and responded to the phishing incident. A full incident report has been prepared for the CISO and affected parties have been notified.",
+      "logs": [],
+      "choices": []
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Cyber Scenario Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Welcome back, <span class="highlight">{{ session.username }}</span> 👋</h1>
+  <p class="page-subtitle">Choose a scenario below to begin your cybersecurity training.</p>
+</div>
+
+<!-- ── Scenario Cards ─────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Available Scenarios</h2>
+  {% if scenarios %}
+    <div class="scenario-grid">
+      {% for sc in scenarios %}
+        <div class="scenario-card role-{{ sc.role }}">
+          <div class="card-badge role-{{ sc.role }}">
+            {% if sc.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
+          </div>
+          <h3 class="card-title">{{ sc.title }}</h3>
+          <p class="card-desc">{{ sc.description }}</p>
+          <div class="card-meta">
+            <span class="meta-item">📋 {{ sc.phases | length }} phases</span>
+          </div>
+          <a href="{{ url_for('scenario_view', scenario_id=sc.id) }}"
+             class="btn btn-scenario role-{{ sc.role }}">
+            Start Scenario →
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <span class="empty-icon">📭</span>
+      <p>No scenarios available yet. Check back soon!</p>
+    </div>
+  {% endif %}
+</section>
+
+<!-- ── Recent Attempts ───────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Your Recent Attempts</h2>
+  {% if attempts %}
+    <div class="attempts-table-wrap">
+      <table class="attempts-table">
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Score</th>
+            <th>Time</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for att in attempts %}
+          <tr>
+            <td>
+              <span class="attempt-scenario">{{ att.scenario_id }}</span>
+            </td>
+            <td>
+              <span class="score-badge {% if att.total_score >= 60 %}score-good{% elif att.total_score >= 20 %}score-mid{% else %}score-bad{% endif %}">
+                {{ att.total_score }} pts
+              </span>
+            </td>
+            <td>{{ (att.time_taken // 60)|int }}m {{ (att.time_taken % 60)|int }}s</td>
+            <td class="timestamp">{{ att.timestamp[:10] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state small">
+      <span class="empty-icon">🎯</span>
+      <p>No attempts yet — start your first scenario!</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

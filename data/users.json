@@ -1,0 +1,9 @@
+{
+  "students": ["alice", "bob", "charlie"],
+  "teachers": [
+    {
+      "username": "admin",
+      "password_hash": "scrypt:32768:8:1$yaXeU0bymx7izwZH$5f5976fe4840693022e6b28e2a526418cd0eb035d657a2021921801212c9dd55708147a5fdf8f01d790f7055bfd3f9715c997a8eb853a9a08d1458a8a4d61f05"
+    }
+  ]
+}
