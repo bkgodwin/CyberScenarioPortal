@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Cyber Scenario Portal{% endblock %}</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  {% if session.get('username') %}
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <span class="logo-icon">🛡️</span>
+        <span class="logo-text">CyberPortal</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      {% if session.get('role') == 'teacher' %}
+        <a href="{{ url_for('teacher_dashboard') }}"
+           class="nav-item {% if request.endpoint == 'teacher_dashboard' %}active{% endif %}">
+          <span class="nav-icon">📊</span>
+          <span>Teacher Dashboard</span>
+        </a>
+      {% else %}
+        <a href="{{ url_for('dashboard') }}"
+           class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+          <span class="nav-icon">🏠</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('dashboard') }}"
+           class="nav-item {% if request.endpoint == 'scenario_view' %}active{% endif %}">
+          <span class="nav-icon">🎯</span>
+          <span>Scenarios</span>
+        </a>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">{{ session.get('username', '?')[0].upper() }}</div>
+        <div class="user-details">
+          <span class="user-name">{{ session.get('username') }}</span>
+          <span class="user-role {{ session.get('role', '') }}">{{ session.get('role', '').title() }}</span>
+        </div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="logout-btn">
+        <span>⏏</span> Logout
+      </a>
+    </div>
+  </aside>
+  {% endif %}
+
+  <!-- ── Main content ─────────────────────────────────────────────────────── -->
+  <main class="main-content {% if not session.get('username') %}no-sidebar{% endif %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

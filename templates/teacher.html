@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Dashboard — Cyber Scenario Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Teacher Dashboard 📊</h1>
+  <p class="page-subtitle">Monitor student progress, manage scenarios, and reset attempts.</p>
+</div>
+
+<!-- ── Summary stats ────────────────────────────────────────────────────── -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-value">{{ students | length }}</div>
+    <div class="stat-label">Registered Students</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ all_attempts | length }}</div>
+    <div class="stat-label">Total Attempts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ scenarios | length }}</div>
+    <div class="stat-label">Scenarios Available</div>
+  </div>
+</div>
+
+<!-- ── Student Attempts ──────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Student Attempts</h2>
+  {% if all_attempts %}
+    <div class="attempts-table-wrap">
+      <table class="attempts-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Scenario</th>
+            <th>Score</th>
+            <th>Time Taken</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for attempt in all_attempts | sort(attribute='timestamp', reverse=True) %}
+          <tr>
+            <td>
+              <span class="student-name">{{ attempt.username }}</span>
+            </td>
+            <td>{{ attempt.scenario_id }}</td>
+            <td>
+              <span class="score-badge {% if attempt.total_score >= 60 %}score-good{% elif attempt.total_score >= 20 %}score-mid{% else %}score-bad{% endif %}">
+                {{ attempt.total_score }} pts
+              </span>
+            </td>
+            <td>{{ (attempt.time_taken // 60)|int }}m {{ (attempt.time_taken % 60)|int }}s</td>
+            <td class="timestamp">{{ attempt.timestamp[:16].replace('T', ' ') }}</td>
+            <td>
+              <button class="btn btn-sm btn-danger"
+                      data-username="{{ attempt.username | e }}"
+                      onclick="resetStudent(this.dataset.username)">
+                Reset
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <span class="empty-icon">📭</span>
+      <p>No student attempts recorded yet.</p>
+    </div>
+  {% endif %}
+</section>
+
+<!-- ── Upload Scenario ───────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Upload New Scenario</h2>
+  <div class="upload-card">
+    <form method="POST" action="{{ url_for('teacher_upload') }}" enctype="multipart/form-data">
+      <div class="form-group">
+        <label class="form-label" for="scenario_file">Scenario JSON File</label>
+        <input class="form-control file-input" type="file" id="scenario_file"
+               name="scenario_file" accept=".json" required />
+        <small class="form-hint">
+          Must be a valid scenario JSON with <code>id</code>, <code>title</code>, <code>role</code>, and <code>phases</code>.
+        </small>
+      </div>
+      <button type="submit" class="btn btn-primary">Upload Scenario 📤</button>
+    </form>
+  </div>
+</section>
+
+<!-- ── Reset Student ─────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Reset Student Attempts</h2>
+  <div class="reset-card">
+    <div class="form-group" style="display:flex;gap:1rem;align-items:flex-end;">
+      <div style="flex:1">
+        <label class="form-label" for="reset-username">Student Username</label>
+        <select class="form-control" id="reset-username">
+          <option value="">— select a student —</option>
+          {% for s in students %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-danger" onclick="resetSelectedStudent()">
+        Reset Attempts 🗑️
+      </button>
+    </div>
+    <div id="reset-feedback" class="form-hint" style="margin-top:0.5rem"></div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /**
+   * POST to /teacher/reset to remove all attempts for the given username.
+   */
+  async function resetStudent(username) {
+    if (!confirm(`Remove ALL attempts for "${username}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/teacher/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Removed ${data.removed} attempt(s) for "${username}".`);
+        location.reload();
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Network error: ' + e.message);
+    }
+  }
+
+  async function resetSelectedStudent() {
+    const sel = document.getElementById('reset-username');
+    const username = sel.value;
+    if (!username) {
+      document.getElementById('reset-feedback').textContent = 'Please select a student first.';
+      return;
+    }
+    await resetStudent(username);
+  }
+</script>
+{% endblock %}

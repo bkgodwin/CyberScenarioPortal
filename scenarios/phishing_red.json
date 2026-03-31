@@ -1,0 +1,143 @@
+{
+  "id": "phishing_red",
+  "title": "Phishing Attack on a Company",
+  "description": "You are a red team operator executing a phishing campaign against a target corporation. Navigate through the attack lifecycle using real-world tactics.",
+  "role": "red",
+  "phases": [
+    {
+      "id": "recon",
+      "name": "Phase 1: Reconnaissance",
+      "narrative": "You've been contracted to test a company's defenses. Your first step is reconnaissance. You need to gather information about the target organization before launching the attack.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "osint_linkedin",
+          "text": "Use LinkedIn to identify employees and their roles",
+          "outcome": "Excellent! You find the CFO, IT Manager, and several finance employees. This gives you perfect targets for spear-phishing. You also discover the company uses Office 365.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "weaponization"
+        },
+        {
+          "id": "direct_scan",
+          "text": "Immediately run Nmap scan against company's IP range",
+          "outcome": "Too aggressive! The company's IDS detects your scan and logs your IP. You've burned your recon opportunity and alerted defenders. Points deducted.",
+          "score_impact": -10,
+          "is_correct": false,
+          "next_phase": "weaponization"
+        },
+        {
+          "id": "whois_dns",
+          "text": "Perform WHOIS lookups and DNS enumeration",
+          "outcome": "Good passive reconnaissance. You discover mail servers, subdomains, and the company's email format (firstname.lastname@company.com). Solid foundation.",
+          "score_impact": 15,
+          "is_correct": true,
+          "next_phase": "weaponization"
+        }
+      ]
+    },
+    {
+      "id": "weaponization",
+      "name": "Phase 2: Weaponization",
+      "narrative": "Now you need to craft your phishing payload. You know the company uses Office 365 and the employees' names. How will you craft your attack?",
+      "logs": [],
+      "choices": [
+        {
+          "id": "spear_phish_cfo",
+          "text": "Create a spear-phishing email targeting the CFO with a fake invoice",
+          "outcome": "Smart targeting! The CFO receives a convincing email appearing to be from a known vendor. You craft a macro-enabled Excel file with a fake invoice. High-value target selected.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "delivery"
+        },
+        {
+          "id": "mass_phish",
+          "text": "Send bulk phishing emails to all employees",
+          "outcome": "Mass campaign detected by email filters. 95% blocked. One employee reports it to IT immediately. You've raised the alarm with minimal gain.",
+          "score_impact": -5,
+          "is_correct": false,
+          "next_phase": "delivery"
+        },
+        {
+          "id": "clone_o365",
+          "text": "Create a convincing Office 365 credential harvesting page",
+          "outcome": "Excellent technique! You clone the O365 login page hosted on a convincing domain. This is a proven credential harvesting method.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "delivery"
+        }
+      ]
+    },
+    {
+      "id": "delivery",
+      "name": "Phase 3: Delivery",
+      "narrative": "Your payload is ready. Now you need to deliver it effectively. The target's email uses Microsoft Defender for Office 365.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "spoof_vendor",
+          "text": "Spoof a trusted vendor email address with your payload",
+          "outcome": "The spoofed email bypasses basic filters. The CFO opens the attachment thinking it's from a known vendor. Payload delivered successfully!",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "exploitation"
+        },
+        {
+          "id": "send_link",
+          "text": "Send a link to your credential harvesting page disguised as an O365 login",
+          "outcome": "The link is flagged by Defender's Safe Links feature. The URL is detonated in a sandbox and marked as phishing. Delivery failed.",
+          "score_impact": -10,
+          "is_correct": false,
+          "next_phase": "exploitation"
+        },
+        {
+          "id": "usb_drop",
+          "text": "Drop infected USB drives in the company parking lot",
+          "outcome": "Creative physical delivery! Two employees plug in the USBs. The payload executes on one machine. Slow but effective.",
+          "score_impact": 15,
+          "is_correct": true,
+          "next_phase": "exploitation"
+        }
+      ]
+    },
+    {
+      "id": "exploitation",
+      "name": "Phase 4: Exploitation",
+      "narrative": "The payload has been delivered. The CFO opened the Excel file. A macro prompt appeared. What do you hope happens next, and what's your backup plan?",
+      "logs": [],
+      "choices": [
+        {
+          "id": "wait_macro",
+          "text": "Wait for the CFO to enable macros and execute the payload",
+          "outcome": "The CFO enables macros (it IS an invoice they were expecting). Your payload executes, establishing a reverse shell. Initial access achieved!",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "complete"
+        },
+        {
+          "id": "send_followup",
+          "text": "Send a follow-up email pressuring the CFO to 'enable content' immediately",
+          "outcome": "The follow-up raises suspicion. The CFO forwards both emails to IT Security. Your campaign is now being investigated. You triggered an incident.",
+          "score_impact": -15,
+          "is_correct": false,
+          "next_phase": "complete"
+        },
+        {
+          "id": "pivot_credential",
+          "text": "Use harvested credentials to log into O365 directly",
+          "outcome": "You successfully log into the CFO's O365 account. Access to emails, SharePoint, and Teams. Highly valuable initial foothold!",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "complete"
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "name": "Mission Complete",
+      "narrative": "You have completed the Red Team phishing engagement. Your report will document the vulnerabilities exploited and provide recommendations to the defensive team.",
+      "logs": [],
+      "choices": []
+    }
+  ]
+}

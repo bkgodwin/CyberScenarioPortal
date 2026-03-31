@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ scenario.title }} — Cyber Scenario Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Role-specific accent colour injected here for the scenario engine */
+  :root {
+    --role-accent: {% if scenario.role == 'red' %}var(--red-accent){% else %}var(--blue-accent){% endif %};
+    --role-accent-dark: {% if scenario.role == 'red' %}var(--red-dark){% else %}var(--blue-dark){% endif %};
+    --role-accent-glow: {% if scenario.role == 'red' %}var(--red-glow){% else %}var(--blue-glow){% endif %};
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- ── Scenario Header ────────────────────────────────────────────────────── -->
+<div class="scenario-header role-{{ scenario.role }}">
+  <div class="scenario-header-left">
+    <a href="{{ url_for('dashboard') }}" class="back-link">← Back</a>
+    <div>
+      <h1 class="scenario-title">{{ scenario.title }}</h1>
+      <span class="role-badge role-{{ scenario.role }}">
+        {% if scenario.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
+      </span>
+    </div>
+  </div>
+  <div class="scenario-header-right">
+    <div class="score-display">
+      <span class="score-label">Score</span>
+      <span class="score-value" id="score-display">0</span>
+    </div>
+    <div class="timer-display">
+      <span class="timer-label">Time</span>
+      <span class="timer-value" id="timer-display">00:00</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Progress Bar ──────────────────────────────────────────────────────── -->
+<div class="progress-container">
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+  </div>
+  <span class="progress-label" id="progress-label">Phase 1 of {{ scenario.phases | selectattr('choices') | list | length }}</span>
+</div>
+
+<!-- ── Main Scenario Area ─────────────────────────────────────────────────── -->
+<div class="scenario-body">
+
+  <!-- Log Viewer (Blue team only) -->
+  <div id="log-panel" class="log-panel {% if scenario.role != 'blue' %}hidden{% endif %}">
+    <div class="log-header">
+      <span class="log-title">📋 SIEM Logs</span>
+      <button class="log-toggle" id="log-toggle-btn" onclick="toggleLogs()">▼ Collapse</button>
+    </div>
+    <div class="log-body" id="log-body">
+      <div class="log-placeholder" id="log-placeholder">No logs for this phase.</div>
+    </div>
+  </div>
+
+  <!-- Phase Content -->
+  <div class="phase-container" id="phase-container">
+
+    <!-- Phase name -->
+    <div class="phase-name" id="phase-name">Loading…</div>
+
+    <!-- Narrative -->
+    <div class="phase-narrative" id="phase-narrative"></div>
+
+    <!-- Choices -->
+    <div class="choices-grid" id="choices-grid"></div>
+
+    <!-- Outcome panel (shown after a choice) -->
+    <div class="outcome-panel hidden" id="outcome-panel">
+      <div class="outcome-icon" id="outcome-icon"></div>
+      <div class="outcome-text" id="outcome-text"></div>
+      <div class="outcome-score" id="outcome-score"></div>
+      <button class="btn btn-primary" id="continue-btn" onclick="continueScenario()">
+        Continue →
+      </button>
+    </div>
+
+    <!-- Completion screen -->
+    <div class="completion-screen hidden" id="completion-screen">
+      <div class="completion-icon">🏆</div>
+      <h2 class="completion-title" id="completion-title">Scenario Complete!</h2>
+      <div class="final-score-display">
+        <span class="final-score-label">Final Score</span>
+        <span class="final-score-value" id="final-score-value">0</span>
+      </div>
+      <div class="decision-breakdown" id="decision-breakdown"></div>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+        ← Back to Dashboard
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<!-- Embed scenario data for JS -->
+<script>
+  const SCENARIO_DATA = {{ scenario_json | safe }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scenario.js') }}"></script>
+{% endblock %}
