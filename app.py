@@ -5,7 +5,7 @@ Cybersecurity Scenario Portal - Flask Backend
 import os
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, flash)
@@ -248,7 +248,7 @@ def api_save_attempt():
         'decisions':   data.get('decisions', []),
         'total_score': data.get('total_score', 0),
         'time_taken':  data.get('time_taken', 0),   # seconds
-        'timestamp':   datetime.utcnow().isoformat() + 'Z',
+        'timestamp':   datetime.now(timezone.utc).isoformat(),
     }
 
     attempts = load_json(ATTEMPTS_FILE)

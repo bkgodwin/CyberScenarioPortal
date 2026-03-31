@@ -1,5 +1,10 @@
 {
-  "students": ["alice", "bob", "charlie"],
+  "students": [
+    "alice",
+    "bob",
+    "charlie",
+    "test"
+  ],
   "teachers": [
     {
       "username": "admin",

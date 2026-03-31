@@ -42,7 +42,7 @@
   <div class="progress-bar-wrap">
     <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
   </div>
-  <span class="progress-label" id="progress-label">Phase 1 of {{ scenario.phases | length - 1 }}</span>
+  <span class="progress-label" id="progress-label">Phase 1 of {{ scenario.phases | selectattr('choices') | list | length }}</span>
 </div>
 
 <!-- ── Main Scenario Area ─────────────────────────────────────────────────── -->

@@ -184,7 +184,7 @@ async function makeChoice(choiceId) {
       phase_id:     currentPhaseId,
       phase_name:   phases.find(p => p.id === currentPhaseId)?.name || currentPhaseId,
       choice_id:    choiceId,
-      choice_text:  document.getElementById('choice-' + choiceId)?.textContent?.trim() || choiceId,
+      choice_text:  phases.find(p => p.id === currentPhaseId)?.choices?.find(c => c.id === choiceId)?.text || choiceId,
       score_impact: data.score_impact,
       is_correct:   data.is_correct,
     });
