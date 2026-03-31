@@ -346,4 +346,5 @@ if __name__ == '__main__':
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(SCENARIOS_DIR, exist_ok=True)
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(debug=debug, port=5000)
+    host  = os.environ.get('FLASK_HOST', '0.0.0.0')
+    app.run(host=host, debug=debug, port=5000)
