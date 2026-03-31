@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "d61fe71c-cfe0-4be3-8c9f-58bd60a0e757",
+    "username": "qauser",
+    "scenario_id": "phishing_blue",
+    "decisions": [
+      {
+        "phase_id": "detection",
+        "choice_id": "block_ip",
+        "score_impact": 20,
+        "is_correct": true
+      }
+    ],
+    "total_score": 110,
+    "time_taken": 300,
+    "hints_used": 2,
+    "longest_streak": 4,
+    "timestamp": "2026-03-31T18:47:40.628515+00:00"
+  }
+]

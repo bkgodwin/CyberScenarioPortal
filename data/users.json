@@ -3,7 +3,10 @@
     "alice",
     "bob",
     "charlie",
-    "test"
+    "test",
+    "testuser",
+    "viewer",
+    "qauser"
   ],
   "teachers": [
     {

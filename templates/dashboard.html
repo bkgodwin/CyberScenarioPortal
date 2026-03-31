@@ -15,13 +15,26 @@
     <div class="scenario-grid">
       {% for sc in scenarios %}
         <div class="scenario-card role-{{ sc.role }}">
-          <div class="card-badge role-{{ sc.role }}">
-            {% if sc.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
+          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+            <div class="card-badge role-{{ sc.role }}">
+              {% if sc.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
+            </div>
+            {% if sc.difficulty %}
+            <span class="card-difficulty difficulty-{{ sc.difficulty }}">
+              {% if sc.difficulty == 'beginner' %}🟢 Beginner
+              {% elif sc.difficulty == 'intermediate' %}🟡 Intermediate
+              {% elif sc.difficulty == 'advanced' %}🔴 Advanced
+              {% else %}{{ sc.difficulty | title }}{% endif %}
+            </span>
+            {% endif %}
           </div>
           <h3 class="card-title">{{ sc.title }}</h3>
           <p class="card-desc">{{ sc.description }}</p>
           <div class="card-meta">
             <span class="meta-item">📋 {{ sc.phases | length }} phases</span>
+            {% if sc.endings %}
+            <span class="meta-item">🔀 Multiple paths</span>
+            {% endif %}
           </div>
           <a href="{{ url_for('scenario_view', scenario_id=sc.id) }}"
              class="btn btn-scenario role-{{ sc.role }}">

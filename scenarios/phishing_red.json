@@ -1,99 +1,161 @@
 {
   "id": "phishing_red",
-  "title": "Phishing Attack on a Company",
-  "description": "You are a red team operator executing a phishing campaign against a target corporation. Navigate through the attack lifecycle using real-world tactics.",
+  "title": "Phishing Attack on a Corporation",
+  "description": "You are a red team operator executing an authorised phishing engagement against a target company. Your reconnaissance approach determines which attack path opens up — targeted spear-phishing, credential harvesting, or a noisier campaign. Navigate the full attack lifecycle using real-world tactics.",
   "role": "red",
+  "difficulty": "intermediate",
   "phases": [
     {
       "id": "recon",
       "name": "Phase 1: Reconnaissance",
-      "narrative": "You've been contracted to test a company's defenses. Your first step is reconnaissance. You need to gather information about the target organization before launching the attack.",
+      "narrative": "You have been contracted to test a financial services company's defences. Initial scope confirmation is complete. Your first task is reconnaissance — you need intelligence about the target before launching any attack. The quality of your recon will determine which attack paths are available to you.",
+      "hint": "Passive OSINT (LinkedIn, WHOIS, DNS enumeration) gives you target-specific intelligence without alerting the blue team. Active network scanning is noisy and risks burning your engagement early. Prioritise breadth of passive intel before depth.",
       "logs": [],
       "choices": [
         {
           "id": "osint_linkedin",
-          "text": "Use LinkedIn to identify employees and their roles",
-          "outcome": "Excellent! You find the CFO, IT Manager, and several finance employees. This gives you perfect targets for spear-phishing. You also discover the company uses Office 365.",
-          "score_impact": 20,
+          "text": "🔎 Conduct deep passive OSINT: LinkedIn profiling, email format discovery, O365 tenant identification, job postings analysis",
+          "outcome": "Excellent passive reconnaissance. You identify the CFO, Head of Finance, and 4 finance department employees by name and role. You confirm the company uses Office 365, discover their email format (firstname.lastname@company.com), and learn from job postings they use SAP and have no MFA policy enforced. Perfect foundation for a targeted spear-phishing campaign.",
+          "score_impact": 25,
           "is_correct": true,
-          "next_phase": "weaponization"
-        },
-        {
-          "id": "direct_scan",
-          "text": "Immediately run Nmap scan against company's IP range",
-          "outcome": "Too aggressive! The company's IDS detects your scan and logs your IP. You've burned your recon opportunity and alerted defenders. Points deducted.",
-          "score_impact": -10,
-          "is_correct": false,
-          "next_phase": "weaponization"
+          "next_phase": "weaponization_targeted"
         },
         {
           "id": "whois_dns",
-          "text": "Perform WHOIS lookups and DNS enumeration",
-          "outcome": "Good passive reconnaissance. You discover mail servers, subdomains, and the company's email format (firstname.lastname@company.com). Solid foundation.",
+          "text": "📡 Run WHOIS lookups, DNS enumeration, and Shodan queries for internet-exposed assets",
+          "outcome": "Solid passive infrastructure recon. You discover the mail server (mail.company.com running Exchange Online), 3 subdomains (vpn.company.com, sharepoint.company.com), and the company's email format from public certificates. Shodan reveals an exposed RDP endpoint. Good but lacks personnel intelligence for targeted social engineering.",
           "score_impact": 15,
           "is_correct": true,
-          "next_phase": "weaponization"
+          "next_phase": "weaponization_generic"
+        },
+        {
+          "id": "nmap_scan",
+          "text": "🔍 Immediately run a comprehensive Nmap scan against the company's public IP range",
+          "outcome": "Too aggressive, too early. The company's IDS/IPS detects the port scan, logs your originating IP, and alerts the SOC. Security team is now on heightened alert. You've burned your recon opportunity and lost the element of surprise. A VPN or proxy should have been used first, and passive methods should precede active scanning.",
+          "score_impact": -15,
+          "is_correct": false,
+          "next_phase": "weaponization_burned"
         }
       ]
     },
     {
-      "id": "weaponization",
-      "name": "Phase 2: Weaponization",
-      "narrative": "Now you need to craft your phishing payload. You know the company uses Office 365 and the employees' names. How will you craft your attack?",
+      "id": "weaponization_targeted",
+      "name": "Phase 2: Targeted Weaponization",
+      "narrative": "Your OSINT has given you detailed intelligence: CFO James Smith (jsmith@company.com), their regular supplier Acme Supplies (vendor email format), O365 tenant with no enforced MFA, and that the company recently posted for an accounts payable role (suggesting finance team processes invoices regularly). How do you weaponize this intelligence?",
+      "hint": "Spear-phishing leverages specific personal and business context to make the lure believable. A convincing vendor impersonation with a plausible invoice amount and real project name will have far higher open rates than generic lures. Credential harvesting via a fake O365 portal is also highly effective given the lack of MFA.",
       "logs": [],
       "choices": [
         {
           "id": "spear_phish_cfo",
-          "text": "Create a spear-phishing email targeting the CFO with a fake invoice",
-          "outcome": "Smart targeting! The CFO receives a convincing email appearing to be from a known vendor. You craft a macro-enabled Excel file with a fake invoice. High-value target selected.",
+          "text": "🎯 Create a spear-phishing email impersonating Acme Supplies with a context-accurate fake invoice (macro-enabled .xlsm)",
+          "outcome": "Precision targeting. You craft an email referencing the CFO by name, use Acme Supplies' real email format, include a plausible invoice number matching their known format, and attach a macro-enabled Excel file. The lure is highly credible. The CFO won't question an invoice from a known vendor matching the amounts they expect.",
           "score_impact": 25,
           "is_correct": true,
           "next_phase": "delivery"
         },
         {
+          "id": "cred_harvest_o365",
+          "text": "🔐 Clone the O365 login portal and set up a convincing credential harvesting page with a typosquat domain",
+          "outcome": "Excellent alternative technique. You register company-secure-login.com and deploy a pixel-perfect O365 clone. Since the company has no MFA requirement, harvested credentials give direct account access. A phishing email with a 'DocuSign agreement' lure will drive traffic to the page convincingly.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "delivery_cred"
+        },
+        {
+          "id": "both_techniques",
+          "text": "⚡ Deploy both a macro payload and a credential harvesting page as parallel attack vectors",
+          "outcome": "Ambitious multi-vector approach. Running parallel campaigns increases complexity and the chance of one succeeding. However, managing two simultaneous infrastructure deployments increases your operational footprint and the risk of detection. You execute both but one of the domains is flagged by threat intel feeds within the day.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "delivery"
+        }
+      ]
+    },
+    {
+      "id": "weaponization_generic",
+      "name": "Phase 2: Infrastructure-Led Weaponization",
+      "narrative": "Your DNS and infrastructure recon has given you the email format and server configuration but limited personnel intelligence. You know the company uses O365, has an exposed VPN endpoint, and processes external email. Without specific target names you'll need to cast a wider net or take an infrastructure-focused approach. How do you weaponize this?",
+      "hint": "Without specific target names, a credential harvesting campaign via a convincing O365 clone sent to role-based addresses (finance@, accounts@, info@) can still be effective. Alternatively, the exposed VPN endpoint discovered via Shodan is an opportunity for credential spraying — but be careful not to trigger account lockout.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "o365_clone_generic",
+          "text": "🔐 Deploy an O365 credential harvesting page and send phishing emails to guessed role-based addresses",
+          "outcome": "Pragmatic approach given limited personal OSINT. You send convincing 'password expiry' notifications to finance@company.com, accounts@company.com, and info@company.com. Two reach real inboxes. One user follows the link and enters credentials. No MFA means immediate O365 access.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "delivery_cred"
+        },
+        {
+          "id": "vpn_spray",
+          "text": "🔓 Conduct a low-and-slow password spray against the exposed VPN endpoint using common passwords",
+          "outcome": "Valid technique on the exposed VPN. You run a careful password spray (one attempt per account per 30 minutes to avoid lockout) using the discovered email list. After 4 hours, one match: a service account using 'Password2023!'. VPN access gained without any phishing needed.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "exploitation_vpn"
+        },
+        {
           "id": "mass_phish",
-          "text": "Send bulk phishing emails to all employees",
-          "outcome": "Mass campaign detected by email filters. 95% blocked. One employee reports it to IT immediately. You've raised the alarm with minimal gain.",
-          "score_impact": -5,
+          "text": "📧 Send a bulk phishing email to every guessed address in the company's email space",
+          "outcome": "Too noisy. Mass phishing to unverified addresses generates numerous bounced emails, triggers spam filters, and one recipient immediately reports the email to IT Security. The SOC is now alerted to a phishing campaign in progress. Your campaign is partially burned before most emails even reach inboxes.",
+          "score_impact": -10,
           "is_correct": false,
+          "next_phase": "delivery_cred"
+        }
+      ]
+    },
+    {
+      "id": "weaponization_burned",
+      "name": "Phase 2: Recovering from Early Detection",
+      "narrative": "Your Nmap scan was detected. The blue team is on heightened alert. You need to quickly reset your approach — your originating IP is now monitored. You can pivot to a different attack infrastructure and proceed more carefully, or adapt your tactics.",
+      "hint": "When burned, immediately rotate all infrastructure — new IPs, new domains. Slow down and return to passive reconnaissance. A phishing campaign can still succeed even with a partially alerted blue team if the lure is convincing enough.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "pivot_new_infra",
+          "text": "🔄 Rotate all infrastructure (new VPS, new domains), switch to purely passive recon, then launch a targeted phishing campaign",
+          "outcome": "Professional operational security recovery. You stand up fresh infrastructure, conduct passive OSINT to fill the gaps from your abbreviated recon, and craft a targeted phishing lure. The delay costs time but the blue team's heightened alert has passed. You proceed with a credible campaign.",
+          "score_impact": 15,
+          "is_correct": true,
           "next_phase": "delivery"
         },
         {
-          "id": "clone_o365",
-          "text": "Create a convincing Office 365 credential harvesting page",
-          "outcome": "Excellent technique! You clone the O365 login page hosted on a convincing domain. This is a proven credential harvesting method.",
-          "score_impact": 20,
-          "is_correct": true,
+          "id": "push_anyway",
+          "text": "⚡ Continue the engagement immediately from new infrastructure without additional recon",
+          "outcome": "Operational impatience. You rotate infrastructure but proceed without sufficient intel. Your phishing email is generic, the lure is not convincing, and the already-alert SOC quickly identifies and blocks the campaign. Limited results from a compressed timeline.",
+          "score_impact": 0,
+          "is_correct": false,
           "next_phase": "delivery"
         }
       ]
     },
     {
       "id": "delivery",
-      "name": "Phase 3: Delivery",
-      "narrative": "Your payload is ready. Now you need to deliver it effectively. The target's email uses Microsoft Defender for Office 365.",
+      "name": "Phase 3: Payload Delivery",
+      "narrative": "Your macro-enabled payload is ready. The target uses Microsoft Defender for Office 365 with Safe Attachments enabled, but you've confirmed through public sandboxing that your current macro evades automated detonation. The CFO is your primary target. How do you deliver the payload?",
+      "hint": "A spoofed sender from a trusted vendor relationship is far more likely to succeed than an unknown sender. However, DMARC and SPF may block outright spoofing of the vendor's actual domain. Registering a convincing lookalike domain (acme-supplies.net vs acmesupplies.com) avoids DMARC issues while maintaining credibility.",
       "logs": [],
       "choices": [
         {
-          "id": "spoof_vendor",
-          "text": "Spoof a trusted vendor email address with your payload",
-          "outcome": "The spoofed email bypasses basic filters. The CFO opens the attachment thinking it's from a known vendor. Payload delivered successfully!",
+          "id": "spoof_lookalike",
+          "text": "📧 Send the payload from a convincing lookalike domain (acme-supplies.net) impersonating the known vendor",
+          "outcome": "Smart delivery. The lookalike domain bypasses DMARC checks (which only protect the exact vendor domain). The email arrives in the CFO's inbox from what appears to be a known vendor. The CFO opens the attachment, sees a convincing invoice, and enables macros when prompted. Payload executing.",
           "score_impact": 25,
           "is_correct": true,
           "next_phase": "exploitation"
         },
         {
-          "id": "send_link",
-          "text": "Send a link to your credential harvesting page disguised as an O365 login",
-          "outcome": "The link is flagged by Defender's Safe Links feature. The URL is detonated in a sandbox and marked as phishing. Delivery failed.",
-          "score_impact": -10,
+          "id": "spoof_exact",
+          "text": "📧 Directly spoof the vendor's exact email address (vendor@acmesupplies.com)",
+          "outcome": "DMARC blocks you. The target company has DMARC in monitoring mode ('p=none') — you got lucky. The spoofed email is delivered to the inbox but flagged with a warning banner. The CFO notices the warning, contacts IT Security, and the email is investigated before they open the attachment.",
+          "score_impact": 5,
           "is_correct": false,
           "next_phase": "exploitation"
         },
         {
           "id": "usb_drop",
-          "text": "Drop infected USB drives in the company parking lot",
-          "outcome": "Creative physical delivery! Two employees plug in the USBs. The payload executes on one machine. Slow but effective.",
+          "text": "💾 Plant infected USB drives in the company's car park labelled 'Q4 Salary Review'",
+          "outcome": "Creative physical delivery vector. Two employees plug in the USB drives (curiosity overcomes security training). The payload executes on one machine — a mid-level finance employee rather than the CFO. Initial access is gained but to a less privileged account. The engagement continues from this foothold.",
           "score_impact": 15,
           "is_correct": true,
           "next_phase": "exploitation"
@@ -101,43 +163,194 @@
       ]
     },
     {
+      "id": "delivery_cred",
+      "name": "Phase 3: Credential Harvesting Delivery",
+      "narrative": "Your O365 credential harvesting page is ready on a typosquat domain. Microsoft Defender's Safe Links will analyse URLs in email — you need to get the phishing link past this defence. How do you deliver the credential harvesting link?",
+      "hint": "Safe Links detonates URLs in a sandbox before delivery. Time-gating (the page only shows the phishing content after a time delay) and using a legitimate redirect service (Google AMP, Dropbox link preview) can bypass sandbox detonation since the sandbox follows the redirect immediately.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "time_gated_page",
+          "text": "⏱️ Implement a time-gated landing page (shows benign content for first 10 minutes, then activates phishing content)",
+          "outcome": "Effective Safe Links bypass. The sandbox follows the URL within seconds of email delivery and sees a harmless page — the link is marked safe and delivered unmodified. Ten minutes later, when real users click, the credential harvesting form activates. Credentials harvested from two targets.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "exploitation_cred"
+        },
+        {
+          "id": "legit_redirect",
+          "text": "🔗 Host the initial link on a legitimate file-sharing service that redirects to your phishing page",
+          "outcome": "Smart indirect delivery. The email contains a link to a real Dropbox or SharePoint URL, which redirects to your harvesting page. Safe Links validates the initial URL (which is clean) without following the redirect chain. The phishing page is reached by real users. Effective evasion.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "exploitation_cred"
+        },
+        {
+          "id": "direct_link",
+          "text": "📧 Send the phishing link directly in the email body",
+          "outcome": "Safe Links detonation catches you. Microsoft's sandbox follows the URL within 30 seconds, identifies the O365 clone, and rewrites the link to a 'blocked phishing site' warning. Every recipient who clicks sees a red warning page instead of your harvesting form. Campaign defeated by automated defences.",
+          "score_impact": -10,
+          "is_correct": false,
+          "next_phase": "exploitation_cred"
+        }
+      ]
+    },
+    {
       "id": "exploitation",
       "name": "Phase 4: Exploitation",
-      "narrative": "The payload has been delivered. The CFO opened the Excel file. A macro prompt appeared. What do you hope happens next, and what's your backup plan?",
+      "narrative": "The payload has been delivered. The CFO has the macro-enabled Excel file open on their screen. A security warning bar says 'PROTECTED VIEW — Enable Editing'. You are at the most critical moment of the engagement. What happens next depends on whether the CFO enables macros — and whether your backup plan is ready.",
+      "hint": "Most users enable macros when they expect the document — an invoice they were waiting for has high credibility. The social engineering context you built in weaponization pays off here. Have a C2 listener ready on a port that blends with normal traffic (443, 80) in case the beacon fires.",
       "logs": [],
       "choices": [
         {
           "id": "wait_macro",
-          "text": "Wait for the CFO to enable macros and execute the payload",
-          "outcome": "The CFO enables macros (it IS an invoice they were expecting). Your payload executes, establishing a reverse shell. Initial access achieved!",
+          "text": "⏳ Wait patiently for the CFO to enable macros naturally — the lure context makes this likely",
+          "outcome": "The CFO enables macros ('it's an invoice I was expecting from a known vendor'). Your payload executes: a PowerShell reverse shell beacons out to your C2 on port 443. Initial access achieved on DESKTOP-CFO01 with CFO-level privileges. Session established. The engagement can proceed to post-exploitation.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "post_exploitation"
+        },
+        {
+          "id": "send_followup",
+          "text": "📧 Send an urgent follow-up email saying 'you must enable content to view the invoice'",
+          "outcome": "This raises suspicion. The CFO receives two emails in quick succession urging them to enable macros — a classic social engineering red flag. They forward both emails to IT Security with the subject 'is this phishing?'. The SOC investigates, your campaign is identified, and an incident is declared. Poor operational patience.",
+          "score_impact": -20,
+          "is_correct": false,
+          "next_phase": "complete"
+        },
+        {
+          "id": "phish_assistant",
+          "text": "🎯 Target the CFO's executive assistant instead — they process invoices on the CFO's behalf",
+          "outcome": "Adaptive targeting. The assistant also received the email and is more likely to open routine-looking invoices without hesitation. They enable macros without a second thought. Initial access on the assistant's workstation. Lower privileges than the CFO but still a valuable foothold for lateral movement.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "post_exploitation"
+        }
+      ]
+    },
+    {
+      "id": "exploitation_cred",
+      "name": "Phase 4: Credential Access",
+      "narrative": "Credentials have been harvested from your phishing page. You have a username (jsmith@company.com) and password. The company has no enforced MFA on O365, confirmed during recon. You have a valid set of credentials for the CFO's O365 account. How do you proceed?",
+      "hint": "Direct O365 login is the simplest path — no MFA means you're in immediately. However, O365 login from an unusual location may trigger a legacy Conditional Access alert even without enforced MFA. Using a residential proxy to appear as a domestic connection reduces detection risk.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "login_o365_direct",
+          "text": "🔓 Log directly into the CFO's O365 account from your existing infrastructure",
+          "outcome": "Success — no MFA means immediate access. You are now authenticated as the CFO in O365. You have access to email, SharePoint, OneDrive, Teams, and any connected SaaS applications. A Conditional Access rule flags the unusual location but it's set to log only, not block. Full O365 access achieved.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "post_exploitation"
+        },
+        {
+          "id": "login_via_proxy",
+          "text": "🕵️ Route the O365 login through a residential proxy matching the target's country",
+          "outcome": "Excellent operational security. The login appears to originate from a residential ISP in the same city as the company. No Conditional Access alerts triggered. Full O365 access with zero detection footprint. Stealth access achieved.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "post_exploitation"
+        },
+        {
+          "id": "password_spray",
+          "text": "🔁 Use the harvested password to spray against other company accounts (password reuse)",
+          "outcome": "Password spraying generates multiple authentication events across accounts. The SIEM detects the unusual pattern of failed logins across different accounts originating from the same IP. SOC is alerted. Your harvested credential for the CFO works but the spray has triggered an investigation.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "post_exploitation"
+        }
+      ]
+    },
+    {
+      "id": "exploitation_vpn",
+      "name": "Phase 4: VPN Foothold",
+      "narrative": "Your password spray succeeded against the exposed VPN. You have a service account credential that provides VPN access. You are now on the internal network segment. This is a privileged network position — you have access to internal resources that aren't exposed to the internet. How do you leverage this foothold?",
+      "hint": "A service account on the VPN gives you network access but potentially limited permissions. Enumerate what the account can see before making noise. Internal network scanning is less visible here than on the internet — but the blue team's EDR and network monitoring are still active inside.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "quiet_enumerate",
+          "text": "🔎 Quietly enumerate internal network resources accessible from this service account without generating login alerts",
+          "outcome": "Patient enumeration pays off. You discover file shares, identify active workstations, and find an internal SharePoint instance. The service account has read access to several finance department file shares including Q4 financial projections. You have achieved your data access objective through the VPN.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "post_exploitation"
+        },
+        {
+          "id": "pivot_to_workstation",
+          "text": "💻 Use the VPN access to attempt RDP connections to visible workstations using the service account",
+          "outcome": "RDP attempts from a service account are unusual and trigger EDR alerts on multiple workstations. The SOC investigates the source VPN IP. You pivot to read-only file share access before the VPN session is terminated. Partial access achieved before detection forced a tactical retreat.",
+          "score_impact": 10,
+          "is_correct": false,
+          "next_phase": "post_exploitation"
+        }
+      ]
+    },
+    {
+      "id": "post_exploitation",
+      "name": "Phase 5: Post-Exploitation",
+      "narrative": "Initial access is established. You have either a shell on an endpoint, O365 account access, or internal network visibility. You are now in the post-exploitation phase. Your engagement objective is to demonstrate business impact — you need to access financial data and optionally establish persistence for the report. How do you proceed?",
+      "hint": "The goal is demonstrating impact while remaining undetected long enough to achieve your objective. Quiet, targeted data access (exfil only the minimum required to prove impact) is better than broad enumeration that triggers UEBA alerts. Establish persistence before exfiltrating — losing access mid-exfil means starting over.",
+      "logs": [],
+      "choices": [
+        {
+          "id": "quiet_exfil",
+          "text": "🤫 Quietly access and exfiltrate targeted financial documents, then establish a lightweight persistence mechanism",
+          "outcome": "Professional tradecraft. You access the CFO's SharePoint and email for the minimum required financial documents, exfiltrate them over encrypted HTTPS to your C2, and establish a low-noise persistence mechanism (scheduled task with a 24-hour callback interval). Objective achieved. SOC detects nothing during the engagement window.",
           "score_impact": 30,
           "is_correct": true,
           "next_phase": "complete"
         },
         {
-          "id": "send_followup",
-          "text": "Send a follow-up email pressuring the CFO to 'enable content' immediately",
-          "outcome": "The follow-up raises suspicion. The CFO forwards both emails to IT Security. Your campaign is now being investigated. You triggered an incident.",
-          "score_impact": -15,
-          "is_correct": false,
+          "id": "enumerate_and_expand",
+          "text": "🗺️ Map the full network, enumerate Active Directory, identify additional high-value targets before exfiltrating",
+          "outcome": "Thorough but slower approach. Your AD enumeration and lateral movement attempts generate UEBA anomalies. The SOC notices unusual account behaviour after 40 minutes and begins investigation. You successfully exfiltrate financial data before containment but your persistence is discovered. Objectives achieved but with detection.",
+          "score_impact": 20,
+          "is_correct": true,
           "next_phase": "complete"
         },
         {
-          "id": "pivot_credential",
-          "text": "Use harvested credentials to log into O365 directly",
-          "outcome": "You successfully log into the CFO's O365 account. Access to emails, SharePoint, and Teams. Highly valuable initial foothold!",
-          "score_impact": 25,
-          "is_correct": true,
+          "id": "aggressive_noisy",
+          "text": "💥 Run BloodHound, Mimikatz, and attempt domain compromise as quickly as possible",
+          "outcome": "Far too aggressive for a realistic engagement. EDR detects Mimikatz's LSASS access within 90 seconds. The SOC is alerted. Your session is killed before significant data is exfiltrated. You demonstrate the attack surface to the blue team but fail to achieve the core engagement objective of data exfiltration.",
+          "score_impact": -15,
+          "is_correct": false,
           "next_phase": "complete"
         }
       ]
     },
     {
       "id": "complete",
-      "name": "Mission Complete",
-      "narrative": "You have completed the Red Team phishing engagement. Your report will document the vulnerabilities exploited and provide recommendations to the defensive team.",
+      "name": "Engagement Complete",
+      "narrative": "The red team engagement has concluded. Your methodology, tradecraft, and tactical decisions throughout this operation will be documented in the final penetration test report. The report will include every technique used, each access point exploited, evidence of data accessed, and detailed remediation recommendations for the blue team.",
       "logs": [],
       "choices": []
+    }
+  ],
+  "endings": [
+    {
+      "min_score": 90,
+      "title": "Elite Red Team Operator",
+      "description": "Outstanding tradecraft throughout the engagement. You chose the optimal reconnaissance approach, crafted a highly convincing lure, delivered it with surgical precision, and achieved your objectives with minimal detection footprint. Your report will be a wake-up call for the blue team.",
+      "badge": "🏆"
+    },
+    {
+      "min_score": 55,
+      "title": "Competent Operator",
+      "description": "Solid engagement methodology. You identified the target, achieved initial access, and demonstrated business impact. A few operational missteps increased noise or reduced effectiveness — review those decisions to sharpen your craft.",
+      "badge": "🥈"
+    },
+    {
+      "min_score": 20,
+      "title": "Developing Operator",
+      "description": "You completed the engagement with some successes and notable mistakes. Several choices raised your detection profile or reduced access quality. Study the optimal paths to improve your operational security and targeting precision.",
+      "badge": "🥉"
+    },
+    {
+      "min_score": 0,
+      "title": "Engagement Compromised",
+      "description": "Multiple tactical errors significantly hampered this engagement. Early detection, poor OPSEC, or premature aggression allowed the blue team to identify and respond to your activities. Review the reconnaissance and delivery phases especially.",
+      "badge": "📚"
     }
   ]
 }

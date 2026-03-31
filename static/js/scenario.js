@@ -1,25 +1,35 @@
 /**
  * scenario.js — Client-side scenario engine
  *
- * This module drives the single-page scenario experience:
- *  - Tracks current phase, score, decisions, and elapsed time
- *  - Sends choices to /api/submit_choice and updates the DOM
- *  - Saves the completed attempt to /api/save_attempt
+ * Features:
+ *  - Branching multi-path scenarios (choices lead to different next phases)
+ *  - Hint system with a configurable score penalty
+ *  - Animated score change pop-ups
+ *  - Correct-answer streak tracker
+ *  - Achievement badges / multiple endings based on final score
+ *  - Persists completed attempts to /api/save_attempt
  */
 
 // ── State ─────────────────────────────────────────────────────────────────
-let currentPhaseId  = null;   // id of the currently displayed phase
-let totalScore      = 0;      // running total score
-let startTime       = null;   // Date object when scenario started
-let timerInterval   = null;   // setInterval handle for the clock
-let decisions       = [];     // [{phase_id, choice_id, score_impact, is_correct}]
-let pendingNextPhase = null;  // next phase object returned by API, waiting for "Continue"
-let scenarioComplete = false; // true once the final phase is reached
+let currentPhaseId   = null;   // id of the currently displayed phase
+let totalScore       = 0;      // running total score
+let startTime        = null;   // Date when scenario started
+let timerInterval    = null;   // setInterval handle for the clock
+let decisions        = [];     // array of decision records
+let pendingNextPhase = null;   // next phase object waiting for "Continue"
+let scenarioComplete = false;  // true once the terminal phase is reached
 
-// Derived from embedded SCENARIO_DATA (injected by the template)
+// Gamification state
+let hintsUsed      = 0;        // number of hints revealed
+let currentStreak  = 0;        // consecutive correct answers
+let longestStreak  = 0;        // peak streak during scenario
+
+const HINT_PENALTY = 5;        // score deducted per hint
+
+// Derived from SCENARIO_DATA embedded by the template
 const scenario     = SCENARIO_DATA;
 const phases       = scenario.phases;
-// Count of phases that have choices (exclude terminal "complete" phases)
+// Active phases are those that present choices (non-terminal)
 const activePhases = phases.filter(p => p.choices && p.choices.length > 0);
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
@@ -29,17 +39,14 @@ const $ = id => document.getElementById(id);
 document.addEventListener('DOMContentLoaded', () => {
   startTime = new Date();
   startTimer();
+  updateStreak(null); // initialise streak display
 
-  // Begin at the first phase
   const firstPhase = phases[0];
   if (firstPhase) renderPhase(firstPhase);
 });
 
 // ── Timer ─────────────────────────────────────────────────────────────────
 
-/**
- * Start the elapsed-time ticker and update the display every second.
- */
 function startTimer() {
   timerInterval = setInterval(() => {
     const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
@@ -60,36 +67,44 @@ function getElapsedSeconds() {
 // ── Phase Rendering ───────────────────────────────────────────────────────
 
 /**
- * Render a phase: update narrative, logs, choices, and progress bar.
- * @param {Object} phase  — phase object from scenario JSON
+ * Render a phase: narrative, logs, choices, progress, and hint button.
+ * @param {Object} phase
  */
 function renderPhase(phase) {
   currentPhaseId = phase.id;
 
-  // Hide outcome panel and completion screen
+  // Reset panels
   $('outcome-panel').classList.add('hidden');
   $('completion-screen').classList.add('hidden');
   $('choices-grid').classList.remove('hidden');
 
-  // Phase name and narrative
-  $('phase-name').textContent = phase.name || phase.id;
+  // Content
+  $('phase-name').textContent      = phase.name || phase.id;
   $('phase-narrative').textContent = phase.narrative || '';
 
-  // Update log panel for blue-team scenarios
   renderLogs(phase.logs || []);
-
-  // Render choices
   renderChoices(phase.choices || []);
+  updateProgress();
 
-  // Progress bar
-  updateProgress(phase.id);
+  // Hint button — show only when the phase has a hint
+  const hintBtn   = $('hint-btn');
+  const hintPanel = $('hint-panel');
+  if (hintBtn && hintPanel) {
+    hintPanel.classList.add('hidden');
+    if (phase.hint) {
+      hintBtn.classList.remove('hidden');
+      hintBtn.disabled    = false;
+      hintBtn.textContent = `💡 Request Hint (−${HINT_PENALTY} pts)`;
+    } else {
+      hintBtn.classList.add('hidden');
+    }
+  }
 
-  // Scroll to top of phase container
   $('phase-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /**
- * Render SIEM log entries for a phase.
+ * Render SIEM log entries for the current phase.
  * @param {Array} logs
  */
 function renderLogs(logs) {
@@ -125,48 +140,121 @@ function renderChoices(choices) {
      </button>`
   ).join('');
 
-  // Attach listeners via addEventListener (avoids inline handler injection)
   grid.querySelectorAll('.choice-btn').forEach(btn => {
     btn.addEventListener('click', () => makeChoice(btn.dataset.choiceId));
   });
 }
 
 /**
- * Update the progress bar based on the current phase index.
- * @param {string} phaseId
+ * Update the progress bar.  For branching scenarios the total is an estimate,
+ * so we show a decision count rather than "Phase N of M".
  */
-function updateProgress(phaseId) {
-  const idx   = activePhases.findIndex(p => p.id === phaseId);
-  const total = activePhases.length;
+function updateProgress() {
+  const made     = decisions.length;
+  const estTotal = Math.max(activePhases.length, made + 1);
+  // Smoothly advance the bar; cap at 92% while still active
+  const pct = Math.min(((made + 0.5) / estTotal) * 100, 92);
 
-  if (idx === -1 || total === 0) {
-    // Terminal phase — fill bar
-    $('progress-bar').style.width = '100%';
-    $('progress-label').textContent = 'Complete';
-    return;
+  $('progress-bar').style.width = pct + '%';
+  $('progress-label').textContent = `Decision ${made + 1}`;
+}
+
+// ── Hint System ───────────────────────────────────────────────────────────
+
+/**
+ * Reveal the hint for the current phase at a score cost.
+ * Called by the hint button's onclick.
+ */
+function requestHint() {
+  const phase = phases.find(p => p.id === currentPhaseId);
+  if (!phase || !phase.hint) return;
+
+  totalScore -= HINT_PENALTY;
+  hintsUsed++;
+
+  $('score-display').textContent = totalScore;
+  animateScoreChange(-HINT_PENALTY);
+
+  $('hint-text').textContent = phase.hint;
+  $('hint-panel').classList.remove('hidden');
+
+  const hintBtn = $('hint-btn');
+  if (hintBtn) {
+    hintBtn.disabled    = true;
+    hintBtn.textContent = `💡 Hint Used (−${HINT_PENALTY} pts)`;
+  }
+}
+
+// ── Score Animation ───────────────────────────────────────────────────────
+
+/**
+ * Create a floating "+N" or "−N" pop-up next to the score display.
+ * @param {number} delta  positive or negative score change
+ */
+function animateScoreChange(delta) {
+  const anchor = $('score-display');
+  if (!anchor) return;
+
+  const popup = document.createElement('div');
+  popup.className  = 'score-popup ' + (delta >= 0 ? 'score-popup-pos' : 'score-popup-neg');
+  popup.textContent = (delta >= 0 ? '+' : '') + delta;
+
+  // Insert next to the score display
+  anchor.parentElement.style.position = 'relative';
+  anchor.parentElement.appendChild(popup);
+
+  // Two-frame trick ensures the transition fires
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      popup.classList.add('score-popup-animate');
+      setTimeout(() => popup.remove(), 900);
+    });
+  });
+}
+
+// ── Streak Tracker ────────────────────────────────────────────────────────
+
+/**
+ * Update the streak counter after a choice.
+ * Pass null on init to just refresh the display.
+ * @param {boolean|null} isCorrect
+ */
+function updateStreak(isCorrect) {
+  if (isCorrect === true) {
+    currentStreak++;
+    if (currentStreak > longestStreak) longestStreak = currentStreak;
+  } else if (isCorrect === false) {
+    currentStreak = 0;
   }
 
-  const pct = ((idx + 1) / total) * 100;
-  $('progress-bar').style.width = pct + '%';
-  $('progress-label').textContent = `Phase ${idx + 1} of ${total}`;
+  const el = $('streak-display');
+  if (!el) return;
+
+  if (currentStreak === 0) {
+    el.textContent = '—';
+    el.className   = 'streak-value';
+  } else {
+    const flames   = '🔥'.repeat(Math.min(currentStreak, 3));
+    el.textContent = currentStreak + ' ' + flames;
+    el.className   = 'streak-value' + (currentStreak >= 3 ? ' streak-hot' : '');
+  }
 }
 
 // ── Choice Handling ───────────────────────────────────────────────────────
 
 /**
- * Called when the student clicks a choice button.
- * Sends the choice to the API and displays the outcome.
+ * Submit a choice to the backend and show the outcome.
  * @param {string} choiceId
  */
 async function makeChoice(choiceId) {
-  // Disable all choice buttons to prevent double-clicking
+  // Disable all buttons to prevent double-clicks
   document.querySelectorAll('.choice-btn').forEach(btn => {
     btn.disabled = true;
   });
 
   try {
     const res = await fetch('/api/submit_choice', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scenario_id: scenario.id,
@@ -179,19 +267,24 @@ async function makeChoice(choiceId) {
 
     const data = await res.json();
 
-    // Record this decision
+    // Record decision
     decisions.push({
       phase_id:     currentPhaseId,
       phase_name:   phases.find(p => p.id === currentPhaseId)?.name || currentPhaseId,
       choice_id:    choiceId,
-      choice_text:  phases.find(p => p.id === currentPhaseId)?.choices?.find(c => c.id === choiceId)?.text || choiceId,
+      choice_text:  phases.find(p => p.id === currentPhaseId)
+                          ?.choices?.find(c => c.id === choiceId)?.text || choiceId,
       score_impact: data.score_impact,
       is_correct:   data.is_correct,
     });
 
-    // Update running score
+    // Update score
     totalScore += data.score_impact;
     $('score-display').textContent = totalScore;
+    animateScoreChange(data.score_impact);
+
+    // Streak
+    updateStreak(data.is_correct);
 
     // Highlight the selected button
     const selectedBtn = document.getElementById('choice-' + choiceId);
@@ -199,16 +292,12 @@ async function makeChoice(choiceId) {
       selectedBtn.classList.add(data.is_correct ? 'selected-correct' : 'selected-wrong');
     }
 
-    // Store next phase for "Continue" button
     pendingNextPhase = data.next_phase;
-
-    // Show outcome
     showOutcome(data);
 
   } catch (err) {
     console.error('Error submitting choice:', err);
     alert('Error submitting your choice. Please try again.');
-    // Re-enable buttons on error
     document.querySelectorAll('.choice-btn').forEach(btn => {
       btn.disabled = false;
     });
@@ -217,20 +306,19 @@ async function makeChoice(choiceId) {
 
 /**
  * Display the outcome panel after a choice is made.
- * @param {Object} data  — API response from /api/submit_choice
+ * @param {Object} data  API response from /api/submit_choice
  */
 function showOutcome(data) {
   const panel = $('outcome-panel');
 
-  $('outcome-icon').textContent  = data.is_correct ? '✅' : '❌';
-  $('outcome-text').textContent  = data.outcome;
+  $('outcome-icon').textContent = data.is_correct ? '✅' : '❌';
+  $('outcome-text').textContent = data.outcome;
 
   const scoreEl = $('outcome-score');
   const sign    = data.score_impact >= 0 ? '+' : '';
   scoreEl.textContent = `${sign}${data.score_impact} points`;
   scoreEl.className   = 'outcome-score ' + (data.score_impact >= 0 ? 'positive' : 'negative');
 
-  // Determine button label
   const isTerminal = !data.next_phase || !data.next_phase.choices || data.next_phase.choices.length === 0;
   $('continue-btn').textContent = isTerminal ? 'View Results →' : 'Continue →';
 
@@ -241,26 +329,23 @@ function showOutcome(data) {
 // ── Continue / Completion ─────────────────────────────────────────────────
 
 /**
- * Called when the student clicks the "Continue" button after seeing an outcome.
- * Either advances to the next phase or shows the completion screen.
+ * Advance to the next phase or show the completion screen.
  */
 async function continueScenario() {
   const nextPhase = pendingNextPhase;
 
   if (!nextPhase || !nextPhase.choices || nextPhase.choices.length === 0) {
-    // No more choices — scenario is complete
     await finishScenario(nextPhase);
     return;
   }
 
-  // Advance to next phase
   renderPhase(nextPhase);
   pendingNextPhase = null;
 }
 
 /**
  * Show the completion screen and persist the attempt.
- * @param {Object|null} finalPhase  — the terminal phase (e.g., "complete")
+ * @param {Object|null} finalPhase  the terminal (choice-less) phase, if any
  */
 async function finishScenario(finalPhase) {
   stopTimer();
@@ -268,37 +353,37 @@ async function finishScenario(finalPhase) {
 
   const timeTaken = getElapsedSeconds();
 
-  // Render completion UI
   $('choices-grid').classList.add('hidden');
   $('outcome-panel').classList.add('hidden');
 
-  // Update phase name to the final phase name if available
   if (finalPhase) {
-    $('phase-name').textContent = finalPhase.name || 'Complete';
+    $('phase-name').textContent      = finalPhase.name || 'Complete';
     $('phase-narrative').textContent = finalPhase.narrative || '';
   }
 
-  // Fill completion screen
+  $('progress-bar').style.width   = '100%';
+  $('progress-label').textContent = 'Complete';
+
   $('final-score-value').textContent = totalScore;
+
+  renderEnding(totalScore);
   renderDecisionBreakdown();
 
   $('completion-screen').classList.remove('hidden');
   $('completion-screen').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Progress bar to 100%
-  $('progress-bar').style.width = '100%';
-  $('progress-label').textContent = 'Complete';
-
   // Persist attempt
   try {
     await fetch('/api/save_attempt', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        scenario_id:  scenario.id,
-        decisions:    decisions,
-        total_score:  totalScore,
-        time_taken:   timeTaken,
+        scenario_id:    scenario.id,
+        decisions:      decisions,
+        total_score:    totalScore,
+        time_taken:     timeTaken,
+        hints_used:     hintsUsed,
+        longest_streak: longestStreak,
       }),
     });
   } catch (err) {
@@ -306,8 +391,45 @@ async function finishScenario(finalPhase) {
   }
 }
 
+// ── Ending / Badge ─────────────────────────────────────────────────────────
+
 /**
- * Render the per-decision breakdown table on the completion screen.
+ * Look up and display the appropriate ending/badge for the player's final score.
+ * The scenario JSON's "endings" array must be sorted by min_score descending.
+ * @param {number} score
+ */
+function renderEnding(score) {
+  const endingPanel = $('ending-panel');
+  if (!endingPanel) return;
+
+  const endings = scenario.endings;
+  if (!endings || !endings.length) {
+    endingPanel.classList.add('hidden');
+    return;
+  }
+
+  // Find the first (highest) tier the player qualifies for
+  const ending = endings.find(e => score >= e.min_score);
+  if (!ending) {
+    endingPanel.classList.add('hidden');
+    return;
+  }
+
+  const badgeEl = $('ending-badge');
+  const titleEl = $('ending-title');
+  const descEl  = $('ending-description');
+
+  if (badgeEl) badgeEl.textContent = ending.badge || '🏅';
+  if (titleEl) titleEl.textContent = ending.title || '';
+  if (descEl)  descEl.textContent  = ending.description || '';
+
+  endingPanel.classList.remove('hidden');
+}
+
+// ── Decision Breakdown ─────────────────────────────────────────────────────
+
+/**
+ * Render the per-decision table on the completion screen.
  */
 function renderDecisionBreakdown() {
   const container = $('decision-breakdown');
@@ -326,17 +448,26 @@ function renderDecisionBreakdown() {
     </div>`;
   }).join('');
 
-  container.innerHTML = rows;
+  // Append hint penalty summary row if hints were used
+  const hintRow = hintsUsed > 0
+    ? `<div class="decision-row hint-summary-row">
+         <span class="decision-phase">Hint Penalties</span>
+         <span class="decision-choice">${hintsUsed} hint${hintsUsed > 1 ? 's' : ''} revealed</span>
+         <span class="decision-points neg">−${hintsUsed * HINT_PENALTY} pts</span>
+       </div>`
+    : '';
+
+  container.innerHTML = rows + hintRow;
 }
 
 // ── Log Viewer Toggle ─────────────────────────────────────────────────────
 
 /**
- * Toggle visibility of the SIEM log panel body.
+ * Toggle visibility of the SIEM log panel.
  */
 function toggleLogs() {
-  const body = $('log-body');
-  const btn  = $('log-toggle-btn');
+  const body      = $('log-body');
+  const btn       = $('log-toggle-btn');
   const collapsed = body.classList.toggle('collapsed');
   btn.textContent = collapsed ? '▶ Expand' : '▼ Collapse';
 }

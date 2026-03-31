@@ -4,9 +4,9 @@
 
 {% block head %}
 <style>
-  /* Role-specific accent colour injected here for the scenario engine */
+  /* Role-specific accent colour for the scenario engine */
   :root {
-    --role-accent: {% if scenario.role == 'red' %}var(--red-accent){% else %}var(--blue-accent){% endif %};
+    --role-accent:      {% if scenario.role == 'red' %}var(--red-accent){% else %}var(--blue-accent){% endif %};
     --role-accent-dark: {% if scenario.role == 'red' %}var(--red-dark){% else %}var(--blue-dark){% endif %};
     --role-accent-glow: {% if scenario.role == 'red' %}var(--red-glow){% else %}var(--blue-glow){% endif %};
   }
@@ -20,12 +20,26 @@
     <a href="{{ url_for('dashboard') }}" class="back-link">← Back</a>
     <div>
       <h1 class="scenario-title">{{ scenario.title }}</h1>
-      <span class="role-badge role-{{ scenario.role }}">
-        {% if scenario.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
-      </span>
+      <div class="scenario-badges">
+        <span class="role-badge role-{{ scenario.role }}">
+          {% if scenario.role == 'red' %}⚔️ Red Team{% else %}🛡️ Blue Team{% endif %}
+        </span>
+        {% if scenario.difficulty %}
+        <span class="difficulty-badge difficulty-{{ scenario.difficulty }}">
+          {% if scenario.difficulty == 'beginner' %}🟢 Beginner
+          {% elif scenario.difficulty == 'intermediate' %}🟡 Intermediate
+          {% elif scenario.difficulty == 'advanced' %}🔴 Advanced
+          {% else %}{{ scenario.difficulty | title }}{% endif %}
+        </span>
+        {% endif %}
+      </div>
     </div>
   </div>
   <div class="scenario-header-right">
+    <div class="streak-widget" id="streak-widget">
+      <span class="streak-label">Streak</span>
+      <span class="streak-value" id="streak-display">—</span>
+    </div>
     <div class="score-display">
       <span class="score-label">Score</span>
       <span class="score-value" id="score-display">0</span>
@@ -42,7 +56,7 @@
   <div class="progress-bar-wrap">
     <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
   </div>
-  <span class="progress-label" id="progress-label">Phase 1 of {{ scenario.phases | selectattr('choices') | list | length }}</span>
+  <span class="progress-label" id="progress-label">Decision 1</span>
 </div>
 
 <!-- ── Main Scenario Area ─────────────────────────────────────────────────── -->
@@ -55,7 +69,7 @@
       <button class="log-toggle" id="log-toggle-btn" onclick="toggleLogs()">▼ Collapse</button>
     </div>
     <div class="log-body" id="log-body">
-      <div class="log-placeholder" id="log-placeholder">No logs for this phase.</div>
+      <div class="log-placeholder">No logs for this phase.</div>
     </div>
   </div>
 
@@ -67,6 +81,17 @@
 
     <!-- Narrative -->
     <div class="phase-narrative" id="phase-narrative"></div>
+
+    <!-- Hint area -->
+    <div class="hint-area" id="hint-area">
+      <button class="hint-btn hidden" id="hint-btn" onclick="requestHint()">
+        💡 Request Hint (−5 pts)
+      </button>
+      <div class="hint-panel hidden" id="hint-panel">
+        <div class="hint-header">💡 Analyst Hint</div>
+        <div class="hint-text" id="hint-text"></div>
+      </div>
+    </div>
 
     <!-- Choices -->
     <div class="choices-grid" id="choices-grid"></div>
@@ -84,12 +109,22 @@
     <!-- Completion screen -->
     <div class="completion-screen hidden" id="completion-screen">
       <div class="completion-icon">🏆</div>
-      <h2 class="completion-title" id="completion-title">Scenario Complete!</h2>
+      <h2 class="completion-title">Scenario Complete!</h2>
+
+      <!-- Achievement / Ending badge -->
+      <div class="ending-panel hidden" id="ending-panel">
+        <div class="ending-badge" id="ending-badge"></div>
+        <div class="ending-title" id="ending-title"></div>
+        <div class="ending-description" id="ending-description"></div>
+      </div>
+
       <div class="final-score-display">
         <span class="final-score-label">Final Score</span>
         <span class="final-score-value" id="final-score-value">0</span>
       </div>
+
       <div class="decision-breakdown" id="decision-breakdown"></div>
+
       <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
         ← Back to Dashboard
       </a>

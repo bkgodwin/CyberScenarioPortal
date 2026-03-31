@@ -1,0 +1,244 @@
+{
+  "id": "ransomware_blue",
+  "title": "Ransomware Incident Response",
+  "description": "You are a Blue Team incident responder. An employee just reported that their files have been renamed and a ransom note appeared on their screen. This is your first alert. Speed of containment determines whether this becomes a single-machine incident or an organisation-wide disaster.",
+  "role": "blue",
+  "difficulty": "advanced",
+  "phases": [
+    {
+      "id": "initial_triage",
+      "name": "Phase 1: Initial Triage",
+      "narrative": "09:14 — A helpdesk ticket arrives: 'All my files have strange extensions and there is a file called HOW_TO_DECRYPT.txt on my desktop.' The employee is ACCT-PC-04 (Amanda in Accounts Payable). Your SIEM shows a spike in file rename events on ACCT-PC-04 starting 4 minutes ago. You have no other alerts yet. What is your first action?",
+      "hint": "Time is your most critical resource during ransomware response. Every second the infected machine stays connected to the network means the ransomware can spread via network shares. Your priority is network isolation — but you also need to understand the scope before you can know if this is already spreading.",
+      "logs": [
+        {"time": "09:10:01", "source": "EDR Agent", "event": "ACCT-PC-04: Mass file rename detected — extensions changed to .locked7 — rate: 1,200 files/min"},
+        {"time": "09:10:15", "source": "EDR Agent", "event": "ACCT-PC-04: vssadmin.exe delete shadows /all (Volume Shadow Copies being deleted)"},
+        {"time": "09:10:30", "source": "Firewall", "event": "ACCT-PC-04: SMB traffic spike to FILE-SERVER-01 and FINANCE-NAS (potential lateral spread via network shares)"},
+        {"time": "09:14:00", "source": "Helpdesk", "event": "Ticket #4521: User Amanda reports encrypted files and ransom note — ACCT-PC-04"}
+      ],
+      "choices": [
+        {
+          "id": "isolate_immediately",
+          "text": "🔌 Immediately network-isolate ACCT-PC-04 via EDR kill switch and check if network shares are also encrypted",
+          "outcome": "Correct and fast response! ACCT-PC-04 is isolated in under 60 seconds. Ransomware encryption is stopped on this host. EDR shows the ransomware was actively scanning SMB shares — you've cut off the spread path. Quick check of FILE-SERVER-01 shows partial encryption of the Finance share (47 files affected before isolation). You contained the incident rapidly.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "scope_assessment"
+        },
+        {
+          "id": "investigate_first",
+          "text": "🔎 Investigate the alert in detail to understand the ransomware variant before taking action",
+          "outcome": "Too slow. The 8 minutes you spend investigating allows the ransomware to fully encrypt ACCT-PC-04 and spread to FILE-SERVER-01 via the open SMB share. The Finance NAS is now also showing encryption activity. What was a single-machine incident has become a multi-system crisis. Always isolate first, investigate second.",
+          "score_impact": -15,
+          "is_correct": false,
+          "next_phase": "scope_assessment_wide"
+        },
+        {
+          "id": "call_user",
+          "text": "📞 Call Amanda and ask her to unplug her network cable and describe what she sees",
+          "outcome": "Reasonable if EDR isolation isn't immediately available. Amanda unplugs her cable ~3 minutes after your call. Some additional file encryption occurred during those minutes but spread via network shares is stopped before significant damage. Slightly slower than EDR kill switch but acceptable as a fallback.",
+          "score_impact": 15,
+          "is_correct": true,
+          "next_phase": "scope_assessment"
+        }
+      ]
+    },
+    {
+      "id": "scope_assessment",
+      "name": "Phase 2: Scope Assessment (Contained)",
+      "narrative": "ACCT-PC-04 is isolated. EDR confirms ransomware activity was limited to this machine with partial spread to FILE-SERVER-01 Finance share (47 files encrypted out of ~15,000). The NAS is unaffected. You need to understand the full scope and initial access vector before deciding your response strategy. Backup status: last successful backup was 6 hours ago.",
+      "hint": "Before jumping to recovery, you need the initial access vector — if the entry point isn't closed, restoring from backup just gives the attacker another shot. Check email logs for recent phishing, remote access logs for unusual VPN connections, and whether any vulnerability was exploited.",
+      "logs": [
+        {"time": "09:15:00", "source": "EDR Agent", "event": "ACCT-PC-04: Ransomware binary identified as LockBit 3.0 variant — initial dropper via macro-enabled document"},
+        {"time": "09:15:05", "source": "Email Gateway", "event": "Amanda received macro-enabled email 09:08 — Subject: 'Payroll Update Q4' — opened attachment at 09:09"},
+        {"time": "09:15:10", "source": "EDR Forensics", "event": "ACCT-PC-04 encrypted: 8,412 local files (complete). FILE-SERVER-01 Finance share: 47 files encrypted (partial)"},
+        {"time": "09:15:20", "source": "Backup System", "event": "Last successful backup: 03:00 today — all servers backed up — ACCT-PC-04 local drive backup: 3 days ago"}
+      ],
+      "choices": [
+        {
+          "id": "close_vector_restore",
+          "text": "🔒 Block the phishing sender domain, remove the malicious email from all mailboxes, verify backup integrity, then begin restore from backup",
+          "outcome": "Correct sequence. Entry point closed first — similar phishing emails removed from all inboxes, sender domain blocked. Backup integrity verified (tested restore of 5 sample files confirms they decrypt correctly). Begin restore of FILE-SERVER-01 Finance share from 03:00 backup. Maximum data loss: 6 hours.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "recovery_contained"
+        },
+        {
+          "id": "restore_immediately",
+          "text": "💾 Immediately begin restoring from backup without investigating the entry point",
+          "outcome": "Backup restoration is fast but risky. Two hours after completing the restore, a second employee opens a similar phishing email. The entry point was never closed. A second ransomware infection begins on ACCT-PC-07. You are responding to the same attack twice.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "recovery_contained"
+        },
+        {
+          "id": "pay_ransom",
+          "text": "💰 Consider paying the ransom to quickly restore encrypted files",
+          "outcome": "Never recommended and rarely necessary when backups are available. Paying funds criminal operations, provides no guarantee of decryption, and may violate sanctions regulations if the group is on a watchlist. With a successful backup from 6 hours ago, there is no justification for payment in this scenario.",
+          "score_impact": -20,
+          "is_correct": false,
+          "next_phase": "recovery_contained"
+        }
+      ]
+    },
+    {
+      "id": "scope_assessment_wide",
+      "name": "Phase 2: Scope Assessment (Spreading)",
+      "narrative": "CRITICAL: The ransomware spread while you were investigating. ACCT-PC-04 is now fully encrypted. FILE-SERVER-01 Finance share is 60% encrypted. Finance NAS is showing initial encryption activity. You have an active, spreading ransomware incident across multiple systems. The initial access was via a phishing email — and 3 similar emails are still unread in other mailboxes.",
+      "hint": "When ransomware is actively spreading, you must contain ALL affected and at-risk systems simultaneously. Declare a major incident, get your incident response team mobilised, and take coordinated isolation actions across all affected infrastructure — not just one machine at a time.",
+      "logs": [
+        {"time": "09:22:00", "source": "EDR Agent", "event": "FILE-SERVER-01: Active encryption — 9,400 files encrypted, rate increasing — LockBit 3.0 running as SYSTEM"},
+        {"time": "09:22:05", "source": "EDR Agent", "event": "FINANCE-NAS: SMB share encryption beginning — 340 files renamed .locked7 in last 2 minutes"},
+        {"time": "09:22:10", "source": "Email Gateway", "event": "3 similar phishing emails unread in other accounts — same sender infrastructure — delivery 09:08–09:10"},
+        {"time": "09:22:20", "source": "SIEM", "event": "Major incident threshold: 3+ systems affected — recommended escalation to CISO and IR team"}
+      ],
+      "choices": [
+        {
+          "id": "mass_isolation_escalate",
+          "text": "🚨 Isolate ALL affected systems simultaneously (ACCT-PC-04, FILE-SERVER-01, FINANCE-NAS), declare major incident, block phishing emails, escalate to CISO",
+          "outcome": "Correct escalated response. All three systems isolated in coordinated action — encryption stopped on FILE-SERVER-01 at 61% and NAS at 12%. Phishing emails purged from remaining inboxes preventing further spread. Major incident declared — IR team engaged. Significant damage done but spread is now stopped.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "recovery_wide"
+        },
+        {
+          "id": "isolate_servers_only",
+          "text": "🖥️ Isolate the servers but leave ACCT-PC-04 online to gather more information",
+          "outcome": "Partial containment. Servers are isolated but ACCT-PC-04 continues scanning for new network paths. It discovers a previously unmapped department NAS and begins encrypting that too. Leaving the initial infection point online was a mistake — it's still running the ransomware process.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "recovery_wide"
+        }
+      ]
+    },
+    {
+      "id": "recovery_contained",
+      "name": "Phase 3: Recovery — Contained Incident",
+      "narrative": "The incident is contained to ACCT-PC-04 and partial FILE-SERVER-01 data. Backups are intact and verified. The entry point has been closed. You need to restore operations and harden defences. How do you sequence the recovery?",
+      "hint": "Recovery sequencing matters: restore servers before workstations (users need data access), verify before reconnecting (don't bring a compromised machine back online), and implement hardening before declaring the incident closed — otherwise you're vulnerable to the next wave.",
+      "logs": [
+        {"time": "09:30:00", "source": "Backup System", "event": "Restore test: 10 sample files from 03:00 backup restored and verified successfully — backup integrity confirmed"},
+        {"time": "09:30:05", "source": "IT Operations", "event": "FILE-SERVER-01 Finance share: 47 encrypted files identified — restore from backup estimated 8 minutes"},
+        {"time": "09:30:10", "source": "EDR Forensics", "event": "ACCT-PC-04: Full local drive encrypted — workstation requires reimage from golden image + profile restore"}
+      ],
+      "choices": [
+        {
+          "id": "structured_recovery",
+          "text": "📋 Restore FILE-SERVER-01 Finance share from backup, reimage ACCT-PC-04 from golden image, implement macro policy and MFA before returning users to service",
+          "outcome": "Excellent structured recovery. File server restored in 8 minutes with 3-hour data loss (last backup at 03:00). ACCT-PC-04 reimaged from clean golden image with fresh configuration. Hardening implemented BEFORE going back online — macro policy and MFA deployment complete. Clean, complete recovery.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "hardening"
+        },
+        {
+          "id": "fast_recovery",
+          "text": "⚡ Restore from backup immediately and reconnect all systems as fast as possible — hardening can wait",
+          "outcome": "Fast but dangerous. Systems restored and reconnected in record time. However, macros remain enabled and MFA is not yet deployed. A similar phishing email arrives the next morning. Fortunately, the user doesn't open it — but the vulnerability window was unnecessarily open. Hardening should happen before reconnection.",
+          "score_impact": 10,
+          "is_correct": false,
+          "next_phase": "hardening"
+        }
+      ]
+    },
+    {
+      "id": "recovery_wide",
+      "name": "Phase 3: Recovery — Wide Spread Incident",
+      "narrative": "Multiple systems are compromised. FILE-SERVER-01 Finance share is 61% encrypted (5,900 files lost — not in last backup). Finance NAS has 12% encryption. Backups for the NAS are from 24 hours ago. The IR team is on site. What is your recovery strategy?",
+      "hint": "When backups don't cover all encrypted data, you face a partial recovery scenario. Prioritise restoring the most critical business data first. Consider whether any data can be recovered from Volume Shadow Copies (though LockBit typically deletes these). Document what cannot be recovered for business impact assessment.",
+      "logs": [
+        {"time": "09:35:00", "source": "Backup System", "event": "FILE-SERVER-01 Finance share: last backup 03:00 — 5,900 files encrypted after 03:00 are unrecoverable from backup"},
+        {"time": "09:35:05", "source": "Backup System", "event": "FINANCE-NAS: last backup 09:00 yesterday — all NAS data from last 24h potentially lost if not recoverable"},
+        {"time": "09:35:10", "source": "EDR Forensics", "event": "VSS deletion confirmed on all affected systems — Volume Shadow Copy recovery not available"},
+        {"time": "09:35:20", "source": "IT Operations", "event": "Finance team confirms: 5,900 lost files include Q4 reporting data compiled yesterday — significant business impact"}
+      ],
+      "choices": [
+        {
+          "id": "comprehensive_recovery_wide",
+          "text": "📊 Restore all systems from backup, engage ransomware recovery specialist for unrecoverable files, document all data loss, begin hardening in parallel with recovery",
+          "outcome": "Professional major incident recovery. Systems restored from backup. A ransomware recovery specialist attempts partial recovery of the 5,900 unrecoverable files — 2,200 partially reconstructed from VSS fragments and email attachments. Full business impact documented. Hardening deployed in parallel. Complete major incident resolution.",
+          "score_impact": 25,
+          "is_correct": true,
+          "next_phase": "hardening"
+        },
+        {
+          "id": "basic_recovery_wide",
+          "text": "💾 Restore from backup and accept the data loss — focus on getting systems back online quickly",
+          "outcome": "Pragmatic but incomplete. Systems restored from backup quickly. The 5,900 unrecoverable files are accepted as lost without exploring recovery options. The finance team later discovers this data included critical Q4 regulatory submissions due in 2 days. The rushed recovery creates a secondary compliance crisis.",
+          "score_impact": 10,
+          "is_correct": false,
+          "next_phase": "hardening"
+        }
+      ]
+    },
+    {
+      "id": "hardening",
+      "name": "Phase 4: Post-Incident Hardening",
+      "narrative": "The immediate incident is resolved. Operations are restoring to normal. Now you must implement controls to prevent ransomware reinfection. Your CISO wants to know what the 'never again' controls are. Threat intelligence confirms this LockBit variant specifically targets companies without enforced MFA and with unrestricted macro execution.",
+      "hint": "The most impactful anti-ransomware controls are: MFA everywhere (prevents credential-based lateral movement), macro restrictions (prevents initial access via Office files), immutable/offline backups (ensures recovery even if backups are encrypted), and network segmentation (limits lateral spread). Address all of these.",
+      "logs": [
+        {"time": "10:00:00", "source": "Threat Intel", "event": "LockBit 3.0 affiliate TTPs: Initial access via phishing macros (80% of cases), lateral movement via SMB with stolen credentials"},
+        {"time": "10:00:05", "source": "IT Security", "event": "Current gaps: MFA not enforced (23% exempt), macros enabled by default, backup storage accessible via SMB (potential backup encryption risk)"},
+        {"time": "10:00:10", "source": "Backup System", "event": "Current backup architecture: all backups accessible via network share — vulnerable to ransomware if credentials compromised"}
+      ],
+      "choices": [
+        {
+          "id": "full_ransomware_hardening",
+          "text": "🛡️ Enforce MFA for all accounts, disable macros via GPO, implement immutable offline backups, deploy network segmentation to isolate finance systems, enable EDR ransomware protection",
+          "outcome": "Comprehensive anti-ransomware hardening. MFA blocks credential-based lateral movement. Macro policy eliminates the primary initial access vector. Immutable offline backups guarantee recovery even if online backups are encrypted. Network segmentation limits blast radius. EDR ransomware protection provides real-time detection. Full-spectrum protection.",
+          "score_impact": 30,
+          "is_correct": true,
+          "next_phase": "complete"
+        },
+        {
+          "id": "macro_backup_hardening",
+          "text": "🔒 Disable macros via Group Policy and implement immutable offline backups",
+          "outcome": "Strong foundational hardening targeting the two most critical gaps. Macro restriction closes the main initial access vector. Immutable backups guarantee recovery capability. MFA and network segmentation are not addressed — lateral movement after any future initial access would still be possible.",
+          "score_impact": 20,
+          "is_correct": true,
+          "next_phase": "complete"
+        },
+        {
+          "id": "training_only_ransomware",
+          "text": "📧 Send ransomware awareness training to all staff",
+          "outcome": "Security awareness training is valuable but not sufficient as the primary control against ransomware. All technical vulnerabilities remain — macros still enabled, backups still network-accessible, MFA not enforced. The next phishing email has the same odds of success as the one that started this incident.",
+          "score_impact": 5,
+          "is_correct": false,
+          "next_phase": "complete"
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "name": "Incident Closed",
+      "narrative": "The ransomware incident has been resolved. Your speed of containment in the first phase was the most critical factor — it determined whether this became a single-machine incident or an organisation-wide disaster. A full post-incident report has been prepared detailing the attack timeline, response actions, lessons learned, and implemented hardening measures.",
+      "logs": [],
+      "choices": []
+    }
+  ],
+  "endings": [
+    {
+      "min_score": 90,
+      "title": "Ransomware Response Expert",
+      "description": "Exceptional response. You contained the ransomware rapidly, minimised data loss, restored operations systematically, and implemented comprehensive hardening. Your speed in Phase 1 made the biggest difference.",
+      "badge": "🏆"
+    },
+    {
+      "min_score": 60,
+      "title": "Effective Incident Responder",
+      "description": "Solid ransomware response overall. You managed the core incident well but some decision delays allowed the impact to grow. Review the branching paths to see how earlier containment could have reduced the overall scope.",
+      "badge": "🥈"
+    },
+    {
+      "min_score": 25,
+      "title": "Learning Responder",
+      "description": "You completed the incident response with significant challenges. The investigation delay in Phase 1 likely led to wider spread. Fast isolation is the single most important skill in ransomware response.",
+      "badge": "🥉"
+    },
+    {
+      "min_score": 0,
+      "title": "Significant Improvement Needed",
+      "description": "Critical delays and suboptimal decisions resulted in maximum impact from this ransomware incident. Focus on the isolation-first principle and the importance of closing attack entry points before recovery.",
+      "badge": "📚"
+    }
+  ]
+}
