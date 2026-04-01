@@ -17,8 +17,8 @@ import duel as duel_engine
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'cyberportal-secret-key-change-in-prod')
 
-# Initialise SocketIO with eventlet async mode for production-ready WebSockets
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
+# Initialise SocketIO with threading async mode (compatible with Python 3.13+)
+socketio = SocketIO(app, async_mode='threading', cors_allowed_origins='*')
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
