@@ -242,13 +242,15 @@ def api_save_attempt():
     data = request.get_json(force=True)
 
     attempt = {
-        'id':          str(uuid.uuid4()),
-        'username':    session['username'],
-        'scenario_id': data.get('scenario_id'),
-        'decisions':   data.get('decisions', []),
-        'total_score': data.get('total_score', 0),
-        'time_taken':  data.get('time_taken', 0),   # seconds
-        'timestamp':   datetime.now(timezone.utc).isoformat(),
+        'id':             str(uuid.uuid4()),
+        'username':       session['username'],
+        'scenario_id':    data.get('scenario_id'),
+        'decisions':      data.get('decisions', []),
+        'total_score':    data.get('total_score', 0),
+        'time_taken':     data.get('time_taken', 0),        # seconds
+        'hints_used':     data.get('hints_used', 0),
+        'longest_streak': data.get('longest_streak', 0),
+        'timestamp':      datetime.now(timezone.utc).isoformat(),
     }
 
     attempts = load_json(ATTEMPTS_FILE)

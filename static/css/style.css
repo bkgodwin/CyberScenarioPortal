@@ -530,3 +530,153 @@ a:hover { text-decoration: underline; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 .hidden { display: none !important; }
+
+/* ============================================================
+   Gamification & Branching Scenario — Extended Styles
+   ============================================================ */
+
+/* Semantic background tints (complement the existing palette) */
+:root {
+  --green-bg:  rgba(63,  185, 80,  0.15);
+  --yellow-bg: rgba(210, 153, 34,  0.15);
+}
+
+/* ── Shared difficulty / tier badge mixin ──────────────────── */
+.difficulty-beginner,
+.card-difficulty.difficulty-beginner     { background: var(--green-bg);  color: var(--green); }
+.difficulty-intermediate,
+.card-difficulty.difficulty-intermediate { background: var(--yellow-bg); color: var(--yellow); }
+.difficulty-advanced,
+.card-difficulty.difficulty-advanced     { background: var(--red-bg);    color: var(--red-accent); }
+
+/* ── Scenario Badges Row ───────────────────────────────────── */
+.scenario-badges { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; }
+
+/* ── Difficulty Badge ──────────────────────────────────────── */
+.difficulty-badge {
+  font-size: 0.72rem; font-weight: 700;
+  padding: 3px 10px; border-radius: 99px;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  width: fit-content;
+}
+
+/* ── Dashboard card: difficulty badge ─────────────────────── */
+.card-difficulty {
+  font-size: 0.72rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 99px;
+}
+
+/* ── Streak Widget ─────────────────────────────────────────── */
+.streak-widget {
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1rem;
+  min-width: 80px;
+}
+.streak-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.streak-value { font-size: 1.1rem; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.streak-value.streak-hot { color: var(--orange); text-shadow: 0 0 12px rgba(247,129,102,0.5); }
+
+/* ── Score Pop-up Animation ────────────────────────────────── */
+.score-popup {
+  position: absolute;
+  top: -10px; right: -8px;
+  font-size: 1rem; font-weight: 800;
+  pointer-events: none;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+  z-index: 10;
+  white-space: nowrap;
+}
+.score-popup-pos { color: var(--green); }
+.score-popup-neg { color: var(--red-accent); }
+.score-popup.score-popup-animate {
+  opacity: 0;
+  transform: translateY(-28px);
+}
+
+/* ── Hint Area ─────────────────────────────────────────────── */
+.hint-area { margin-bottom: 1rem; }
+
+.hint-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  background: rgba(210,153,34,.1);
+  border: 1px solid rgba(210,153,34,.4);
+  border-radius: var(--radius-sm);
+  color: var(--yellow);
+  font-family: inherit; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.hint-btn:hover:not(:disabled) {
+  background: rgba(210,153,34,.2);
+  border-color: var(--yellow);
+}
+.hint-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hint-panel {
+  margin-top: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: rgba(210,153,34,.06);
+  border: 1px solid rgba(210,153,34,.35);
+  border-left: 3px solid var(--yellow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.hint-panel.hidden { display: none; }
+
+.hint-header {
+  font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--yellow);
+  margin-bottom: 0.4rem;
+}
+.hint-text {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.65;
+}
+
+/* ── Ending / Achievement Panel ────────────────────────────── */
+.ending-panel {
+  margin: 0 auto 1.75rem;
+  max-width: 480px;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(135deg, rgba(68,136,255,.06), rgba(255,68,68,.06));
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.ending-panel.hidden { display: none; }
+
+.ending-badge {
+  font-size: 3.5rem;
+  margin-bottom: 0.6rem;
+  display: block;
+  filter: drop-shadow(0 0 16px rgba(255,255,255,0.2));
+}
+.ending-title {
+  font-size: 1.25rem; font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.ending-description {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ── Decision breakdown: hint summary row ──────────────────── */
+.hint-summary-row {
+  border-top: 1px dashed var(--border-light);
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+}
+.hint-summary-row .decision-phase,
+.hint-summary-row .decision-choice { color: var(--yellow); }
