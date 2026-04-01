@@ -101,8 +101,8 @@ def load_scenarios():
             try:
                 data = load_json(path)
                 scenarios[data['id']] = data
-            except (KeyError, RuntimeError):
-                pass  # skip malformed files
+            except (KeyError, RuntimeError) as e:
+                app.logger.warning("Skipping malformed scenario file %s: %s", fname, e)
     return scenarios
 
 
@@ -453,7 +453,7 @@ def teacher_dashboard():
     gradebook = {st['username']: {} for st in students}
     for attempt in attempts:
         if attempt.get('duel'):
-            continue
+            continue  # gradebook tracks individual scenario performance only, not competitive duels
         uname = attempt.get('username', '')
         sid   = attempt.get('scenario_id', '')
         score = attempt.get('total_score', 0)

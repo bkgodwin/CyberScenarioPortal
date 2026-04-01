@@ -135,7 +135,7 @@
 
 {% block scripts %}
 <script>
-  // Auto-scroll to hash anchor on load
+  // Scroll to hash anchor on load (allow DOM to settle before scrolling)
   if (window.location.hash) {
     const el = document.querySelector(window.location.hash);
     if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
