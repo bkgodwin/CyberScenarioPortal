@@ -22,6 +22,11 @@
       <button class="tab-btn" data-tab="teacher">
         👩‍🏫 Teacher Login
       </button>
+      {% if signup_enabled %}
+      <button class="tab-btn" data-tab="register">
+        ✨ Register
+      </button>
+      {% endif %}
     </div>
 
     <!-- Student tab -->
@@ -29,17 +34,28 @@
       <form method="POST" action="{{ url_for('login') }}">
         <input type="hidden" name="login_type" value="student" />
         <div class="form-group">
-          <label class="form-label" for="student-username">Username</label>
+          <label class="form-label" for="student-username">Username or Email</label>
           <input
             class="form-control"
             type="text"
             id="student-username"
             name="username"
-            placeholder="Enter your username"
+            placeholder="Enter your username or email"
             autocomplete="username"
             required
           />
-          <small class="form-hint">New users are registered automatically.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="student-password">Password <small style="opacity:.6;">(leave blank for legacy accounts)</small></label>
+          <input
+            class="form-control"
+            type="password"
+            id="student-password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+          />
+          <small class="form-hint">New users without a password are registered automatically.</small>
         </div>
         <button type="submit" class="btn btn-primary btn-block">
           Enter Portal →
@@ -80,6 +96,42 @@
         </button>
       </form>
     </div>
+
+    <!-- Register tab -->
+    {% if signup_enabled %}
+    <div class="tab-content" id="tab-register">
+      <form method="POST" action="{{ url_for('register') }}">
+        <div class="form-group">
+          <label class="form-label" for="reg-username">Username</label>
+          <input class="form-control" type="text" id="reg-username" name="username"
+                 placeholder="choose a username" autocomplete="username" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-name">Full Name</label>
+          <input class="form-control" type="text" id="reg-name" name="name"
+                 placeholder="Your name" autocomplete="name" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-email">Email</label>
+          <input class="form-control" type="email" id="reg-email" name="email"
+                 placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-password">Password</label>
+          <input class="form-control" type="password" id="reg-password" name="password"
+                 placeholder="Min. 6 characters" autocomplete="new-password" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-confirm">Confirm Password</label>
+          <input class="form-control" type="password" id="reg-confirm" name="confirm_password"
+                 placeholder="Repeat password" autocomplete="new-password" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">
+          Create Account →
+        </button>
+      </form>
+    </div>
+    {% endif %}
 
   </div>
 </div>

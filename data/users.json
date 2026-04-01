@@ -1,10 +1,15 @@
 {
+  "settings": {
+    "signup_enabled": true,
+    "duel_enabled": true,
+    "disabled_scenarios": []
+  },
   "students": [
-    "alice",
-    "bob",
-    "charlie",
-    "test",
-    "demo"
+    {"username": "alice",   "name": "Alice",   "email": "", "password_hash": ""},
+    {"username": "bob",     "name": "Bob",     "email": "", "password_hash": ""},
+    {"username": "charlie", "name": "Charlie", "email": "", "password_hash": ""},
+    {"username": "test",    "name": "Test",    "email": "", "password_hash": ""},
+    {"username": "demo",    "name": "Demo",    "email": "", "password_hash": ""}
   ],
   "teachers": [
     {

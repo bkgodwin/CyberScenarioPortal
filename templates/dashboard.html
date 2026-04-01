@@ -9,7 +9,7 @@
 </div>
 
 <!-- ── Scenario Cards ─────────────────────────────────────────────────────── -->
-<section class="section">
+<section class="section" id="scenarios">
   <h2 class="section-title">Available Scenarios</h2>
   {% if scenarios %}
     <div class="scenario-grid">
@@ -42,38 +42,38 @@
           </a>
         </div>
       {% endfor %}
-
-      <!-- Red vs Blue Duel promo card -->
-      <div class="scenario-card role-red" style="border-color:var(--red-accent);">
-        <div style="display:flex;align-items:center;gap:0.5rem;">
-          <div class="card-badge role-red">⚔️ Multiplayer</div>
-          <span class="card-badge" style="background:rgba(255,200,0,.12);color:#f0c040;">🆕 New</span>
-        </div>
-        <h3 class="card-title">Red vs Blue Duel</h3>
-        <p class="card-desc">Challenge another player in a real-time 1v1 cybersecurity battle. Attacker vs Analyst — who will win?</p>
-        <div class="card-meta">
-          <span class="meta-item">🎮 Real-time WebSockets</span>
-          <span class="meta-item">👥 1v1</span>
-        </div>
-        <a href="{{ url_for('duel_lobby') }}" class="btn btn-scenario role-red">
-          Enter Lobby →
-        </a>
-      </div>
     </div>
   {% else %}
-    <div class="scenario-grid">
-      <!-- Red vs Blue Duel promo card (shown even with no other scenarios) -->
-      <div class="scenario-card role-red" style="border-color:var(--red-accent);">
-        <div style="display:flex;align-items:center;gap:0.5rem;">
-          <div class="card-badge role-red">⚔️ Multiplayer</div>
-        </div>
-        <h3 class="card-title">Red vs Blue Duel</h3>
-        <p class="card-desc">Challenge another player in a real-time 1v1 cybersecurity battle.</p>
-        <a href="{{ url_for('duel_lobby') }}" class="btn btn-scenario role-red">Enter Lobby →</a>
-      </div>
+    <div class="empty-state small">
+      <span class="empty-icon">🎯</span>
+      <p>No scenarios available yet.</p>
     </div>
   {% endif %}
 </section>
+
+<!-- ── Red vs Blue Duel ──────────────────────────────────────────────────── -->
+{% if duel_enabled %}
+<section class="section" id="duel">
+  <h2 class="section-title">🆚 Red vs Blue Duel</h2>
+  <div class="scenario-grid">
+    <div class="scenario-card role-red" style="border-color:var(--red-accent);">
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <div class="card-badge role-red">⚔️ Multiplayer</div>
+        <span class="card-badge" style="background:rgba(255,200,0,.12);color:#f0c040;">🆕 New</span>
+      </div>
+      <h3 class="card-title">Red vs Blue Duel</h3>
+      <p class="card-desc">Challenge another player in a real-time 1v1 cybersecurity battle. Attacker vs Analyst — who will win?</p>
+      <div class="card-meta">
+        <span class="meta-item">🎮 Real-time WebSockets</span>
+        <span class="meta-item">👥 1v1</span>
+      </div>
+      <a href="{{ url_for('duel_lobby') }}" class="btn btn-scenario role-red">
+        Enter Lobby →
+      </a>
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <!-- ── Recent Attempts ───────────────────────────────────────────────────── -->
 <section class="section">
@@ -131,4 +131,14 @@
     </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Auto-scroll to hash anchor on load
+  if (window.location.hash) {
+    const el = document.querySelector(window.location.hash);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
+  }
+</script>
 {% endblock %}

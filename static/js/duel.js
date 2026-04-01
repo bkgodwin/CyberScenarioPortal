@@ -227,6 +227,27 @@
       });
     }
 
+    // ── Opponent left mid-game ────────────────────────────────────────────────
+    socket.on('opponent_left', (data) => {
+      // Hide all action panels and show a dedicated message
+      ['setup-panel','attacker-wait-setup','attacker-actions',
+       'analyst-actions','waiting-turn','game-over-panel'].forEach(hide);
+
+      const panel = document.getElementById('game-over-panel');
+      if (panel) {
+        panel.style.display = '';
+        const box = document.getElementById('game-over-box');
+        if (box) box.className = 'game-over-box game-over-lose';
+        const icon  = document.getElementById('game-over-icon');
+        const title = document.getElementById('game-over-title');
+        const reason = document.getElementById('game-over-reason');
+        if (icon)   icon.textContent  = '🚪';
+        if (title)  title.textContent = 'Opponent Left';
+        if (reason) reason.textContent = data.msg || 'Your opponent left the game.';
+      }
+      showToast('🚪 ' + (data.msg || 'Your opponent left.'), 'warning');
+    });
+
     // ── Main state update handler ─────────────────────────────────────────────
     socket.on('update_game_state', (state) => {
       renderGameState(state);
