@@ -8,6 +8,7 @@ The module is designed to be easy to extend to 2v2 or team modes later.
 import uuid
 import random
 from datetime import datetime, timezone
+from typing import Callable
 
 # ── In-memory state ───────────────────────────────────────────────────────────
 # Keyed by lobby_id (str)
@@ -504,7 +505,12 @@ def _analyst_actions_payload() -> list:
     ]
 
 
-def save_duel_result(attempts_file: str, lobby_id: str, load_json_fn, save_json_fn) -> None:
+def save_duel_result(
+    attempts_file: str,
+    lobby_id: str,
+    load_json_fn: Callable[[str], list],
+    save_json_fn: Callable[[str, list], None],
+) -> None:
     """
     Append duel result records to the shared attempts JSON file.
 
