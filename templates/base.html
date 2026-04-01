@@ -43,6 +43,11 @@
           <span class="nav-icon">🎯</span>
           <span>Scenarios</span>
         </a>
+        <a href="{{ url_for('duel_lobby') }}"
+           class="nav-item {% if request.endpoint in ('duel_lobby', 'duel_game') %}active{% endif %}">
+          <span class="nav-icon">⚔️</span>
+          <span>Red vs Blue Duel</span>
+        </a>
       {% endif %}
     </nav>
 

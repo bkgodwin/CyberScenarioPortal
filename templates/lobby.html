@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Red vs Blue Duel — Lobby{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/duel.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">⚔️ Red vs <span class="highlight-blue">Blue</span> Duel</h1>
+  <p class="page-subtitle">Create or join a lobby to challenge another player in real-time.</p>
+</div>
+
+<!-- ── Create lobby ──────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">Create a Lobby</h2>
+  <div class="lobby-create-form">
+    <input id="lobby-name-input" type="text" class="duel-input" placeholder="Lobby name (e.g. Arena Alpha)" maxlength="40" />
+    <button id="create-lobby-btn" class="btn btn-red">⚔️ Create Lobby</button>
+  </div>
+</section>
+
+<!-- ── Open lobbies ───────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">
+    Open Lobbies
+    <span id="lobby-count" class="lobby-count-badge">0</span>
+  </h2>
+  <div id="lobby-list" class="lobby-list">
+    <div class="empty-state small">
+      <span class="empty-icon">🏟️</span>
+      <p>No lobbies open yet — be the first!</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Lobby row template (cloned by JS) ─────────────────────────────────── -->
+<template id="lobby-row-tpl">
+  <div class="lobby-row" data-lobby-id="">
+    <div class="lobby-info">
+      <span class="lobby-name-text"></span>
+      <div class="lobby-slots">
+        <span class="lobby-slot slot-attacker" title="Attacker (Player 1)">
+          ⚔️ <span class="slot-label">Waiting…</span>
+        </span>
+        <span class="lobby-slot-divider">vs</span>
+        <span class="lobby-slot slot-analyst" title="Analyst (Player 2)">
+          🛡️ <span class="slot-label">Waiting…</span>
+        </span>
+      </div>
+    </div>
+    <div class="lobby-actions">
+      <span class="lobby-status-badge"></span>
+      <button class="btn btn-blue btn-sm join-btn">Join</button>
+      <button class="btn btn-sm leave-btn" style="display:none;">Leave</button>
+    </div>
+  </div>
+</template>
+
+<!-- ── Status toast ───────────────────────────────────────────────────────── -->
+<div id="duel-toast" class="duel-toast" style="display:none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Socket.IO client library -->
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<script>
+  // Pass the current username to duel.js
+  window.CURRENT_USER = "{{ session.username | e }}";
+  window.LOBBY_URL    = "{{ url_for('duel_lobby') }}";
+  window.GAME_BASE_URL = "{{ url_for('duel_game', lobby_id='__ID__') }}".replace('__ID__', '');
+</script>
+<script src="{{ url_for('static', filename='js/duel.js') }}"></script>
+{% endblock %}
