@@ -55,7 +55,9 @@
             placeholder="••••••••"
             autocomplete="current-password"
           />
-          <small class="form-hint">New users without a password are registered automatically.</small>
+          <small class="form-hint">
+            {% if signup_enabled %}Use the Register tab to create a new account.{% else %}Contact your admin to get an account.{% endif %}
+          </small>
         </div>
         <button type="submit" class="btn btn-primary btn-block">
           Enter Portal →

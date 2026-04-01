@@ -10,6 +10,8 @@
 
   // ── Connect to Socket.IO ──────────────────────────────────────────────────
   const socket = io();
+  // Expose socket so inline scripts (e.g. beforeunload in game.html) can use it
+  window._duelSocket = socket;
 
   // ── Page detection ────────────────────────────────────────────────────────
   const IS_GAME_PAGE  = typeof window.LOBBY_ID  !== 'undefined';

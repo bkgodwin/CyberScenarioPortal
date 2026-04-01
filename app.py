@@ -5,7 +5,6 @@ Cybersecurity Scenario Portal - Flask Backend
 import os
 import json
 import uuid
-import secrets
 import tempfile
 from datetime import datetime, timezone
 from functools import wraps
@@ -17,7 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import duel as duel_engine
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+app.secret_key = os.environ.get('SECRET_KEY', 'cyberportal-dev-key-change-in-production')
 
 # Initialise SocketIO with threading async mode (compatible with Python 3.13+)
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins='*')
@@ -202,6 +201,9 @@ def login():
                     break
 
             if student_entry is None:
+                if not settings.get('signup_enabled', True):
+                    flash('Account not found and new sign-ups are disabled. Contact your admin.', 'danger')
+                    return render_template('login.html', signup_enabled=False)
                 # Legacy auto-create (no password, username-only)
                 new_student = {
                     'username':      username,
@@ -277,7 +279,7 @@ def register():
         'username':      username,
         'name':          name,
         'email':         email,
-        'password_hash': generate_password_hash(password, method='pbkdf2:sha256'),
+        'password_hash': generate_password_hash(password),
     }
     users.setdefault('students', []).append(new_student)
     save_json(USERS_FILE, users)
@@ -500,8 +502,8 @@ def teacher_upload():
             if 'id' not in scenario_data or 'phases' not in scenario_data:
                 flash('Invalid scenario JSON: missing "id" or "phases".', 'danger')
                 return redirect(url_for('teacher_dashboard'))
-            # Use os.path.basename + secure_filename to prevent path traversal
-            safe_name = os.path.basename(secure_filename(scenario_data['id'] + '.json'))
+            # Use secure_filename to prevent path traversal
+            safe_name = secure_filename(scenario_data['id'] + '.json')
             save_path = os.path.join(SCENARIOS_DIR, safe_name)
             with open(save_path, 'w', encoding='utf-8') as fh:
                 fh.write(content.decode('utf-8'))
@@ -561,7 +563,7 @@ def teacher_add_user():
         'username':      username,
         'name':          name or username.title(),
         'email':         email,
-        'password_hash': generate_password_hash(password, method='pbkdf2:sha256') if password else '',
+        'password_hash': generate_password_hash(password) if password else '',
     }
     users.setdefault('students', []).append(new_student)
     save_json(USERS_FILE, users)
@@ -616,7 +618,7 @@ def teacher_change_password():
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
 
     users    = load_json(USERS_FILE)
-    new_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+    new_hash = generate_password_hash(new_password)
 
     if role == 'teacher':
         for t in users.get('teachers', []):
@@ -658,7 +660,7 @@ def teacher_change_own_password():
     if not check_password_hash(teacher.get('password_hash', ''), current_pw):
         return jsonify({'error': 'Current password is incorrect'}), 403
 
-    teacher['password_hash'] = generate_password_hash(new_password, method='pbkdf2:sha256')
+    teacher['password_hash'] = generate_password_hash(new_password)
     save_json(USERS_FILE, users)
     return jsonify({'status': 'ok'})
 

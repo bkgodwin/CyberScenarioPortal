@@ -221,6 +221,9 @@ a:hover { text-decoration: underline; }
 .btn-danger  { background: var(--red-bg); color: var(--red-accent); border-color: var(--red-accent); }
 .btn-danger:hover { background: var(--red-accent); color: #fff; }
 
+.btn-outline { background: transparent; color: var(--text-secondary); border-color: var(--border-light); }
+.btn-outline:hover { background: var(--bg-card); color: var(--text-primary); text-decoration: none; }
+
 .btn-block { width: 100%; }
 .btn-sm    { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
 

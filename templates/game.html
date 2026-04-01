@@ -175,7 +175,9 @@
 <script src="{{ url_for('static', filename='js/duel.js') }}"></script>
 <script>
   window.addEventListener('beforeunload', () => {
-    socket.emit('leave_game', { lobby_id: window.LOBBY_ID });
+    if (window._duelSocket) {
+      window._duelSocket.emit('leave_game', { lobby_id: window.LOBBY_ID });
+    }
   });
 </script>
 {% endblock %}
