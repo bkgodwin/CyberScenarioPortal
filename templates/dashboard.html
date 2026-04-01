@@ -42,11 +42,35 @@
           </a>
         </div>
       {% endfor %}
+
+      <!-- Red vs Blue Duel promo card -->
+      <div class="scenario-card role-red" style="border-color:var(--red-accent);">
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div class="card-badge role-red">⚔️ Multiplayer</div>
+          <span class="card-badge" style="background:rgba(255,200,0,.12);color:#f0c040;">🆕 New</span>
+        </div>
+        <h3 class="card-title">Red vs Blue Duel</h3>
+        <p class="card-desc">Challenge another player in a real-time 1v1 cybersecurity battle. Attacker vs Analyst — who will win?</p>
+        <div class="card-meta">
+          <span class="meta-item">🎮 Real-time WebSockets</span>
+          <span class="meta-item">👥 1v1</span>
+        </div>
+        <a href="{{ url_for('duel_lobby') }}" class="btn btn-scenario role-red">
+          Enter Lobby →
+        </a>
+      </div>
     </div>
   {% else %}
-    <div class="empty-state">
-      <span class="empty-icon">📭</span>
-      <p>No scenarios available yet. Check back soon!</p>
+    <div class="scenario-grid">
+      <!-- Red vs Blue Duel promo card (shown even with no other scenarios) -->
+      <div class="scenario-card role-red" style="border-color:var(--red-accent);">
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div class="card-badge role-red">⚔️ Multiplayer</div>
+        </div>
+        <h3 class="card-title">Red vs Blue Duel</h3>
+        <p class="card-desc">Challenge another player in a real-time 1v1 cybersecurity battle.</p>
+        <a href="{{ url_for('duel_lobby') }}" class="btn btn-scenario role-red">Enter Lobby →</a>
+      </div>
     </div>
   {% endif %}
 </section>
@@ -59,9 +83,9 @@
       <table class="attempts-table">
         <thead>
           <tr>
-            <th>Scenario</th>
+            <th>Scenario / Mode</th>
             <th>Score</th>
-            <th>Time</th>
+            <th>Details</th>
             <th>Date</th>
           </tr>
         </thead>
@@ -69,14 +93,31 @@
           {% for att in attempts %}
           <tr>
             <td>
-              <span class="attempt-scenario">{{ att.scenario_id }}</span>
+              {% if att.get('duel') %}
+                <span class="card-badge role-red" style="display:inline-flex;">⚔️ Duel</span>
+              {% else %}
+                <span class="attempt-scenario">{{ att.scenario_id }}</span>
+              {% endif %}
             </td>
             <td>
               <span class="score-badge {% if att.total_score >= 60 %}score-good{% elif att.total_score >= 20 %}score-mid{% else %}score-bad{% endif %}">
                 {{ att.total_score }} pts
               </span>
             </td>
-            <td>{{ (att.time_taken // 60)|int }}m {{ (att.time_taken % 60)|int }}s</td>
+            <td>
+              {% if att.get('duel') %}
+                <span style="color:var(--text-secondary);font-size:0.85rem;">
+                  Role: <strong>{{ att.role | title }}</strong> · vs <strong>{{ att.opponent }}</strong> ·
+                  {% if att.result == 'win' %}
+                    <span style="color:var(--green);">✅ Win</span>
+                  {% else %}
+                    <span style="color:var(--red-accent);">❌ Loss</span>
+                  {% endif %}
+                </span>
+              {% else %}
+                {{ (att.time_taken // 60)|int }}m {{ (att.time_taken % 60)|int }}s
+              {% endif %}
+            </td>
             <td class="timestamp">{{ att.timestamp[:10] }}</td>
           </tr>
           {% endfor %}

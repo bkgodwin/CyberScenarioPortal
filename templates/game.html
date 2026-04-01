@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Red vs Blue Duel — Game{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/duel.css') }}" />
+{% endblock %}
+
+{% block content %}
+{# ── Top bar ─────────────────────────────────────────────────────────────── #}
+<div class="game-topbar">
+  <div class="topbar-left">
+    <span class="game-title">⚔️ Red vs Blue Duel</span>
+    <span id="game-phase-badge" class="phase-badge">Setup</span>
+  </div>
+  <div class="topbar-center">
+    <div class="turn-indicator" id="turn-indicator">
+      <span id="turn-label">Waiting…</span>
+      <span class="turn-num" id="turn-num"></span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <a href="{{ url_for('duel_lobby') }}" class="btn btn-sm" style="opacity:.6;">← Lobby</a>
+  </div>
+</div>
+
+{# ── Progress bars ────────────────────────────────────────────────────────── #}
+<div class="progress-bars-row">
+  <div class="progress-bar-group attacker-bar-group">
+    <span class="progress-label">⚔️ Attacker Progress</span>
+    <div class="progress-track">
+      <div class="progress-fill attacker-fill" id="attacker-progress-fill" style="width:0%"></div>
+    </div>
+    <span class="progress-pct" id="attacker-progress-pct">0%</span>
+  </div>
+  <div class="progress-bar-group analyst-bar-group">
+    <span class="progress-label">🛡️ Detection Level</span>
+    <div class="progress-track">
+      <div class="progress-fill analyst-fill" id="detection-fill" style="width:0%"></div>
+    </div>
+    <span class="progress-pct" id="detection-pct">0%</span>
+  </div>
+</div>
+
+{# ── Main game area ───────────────────────────────────────────────────────── #}
+<div class="game-layout">
+
+  {# Left panel — action buttons #}
+  <div class="game-panel game-actions-panel" id="game-actions-panel">
+
+    {# === ANALYST SETUP PHASE === #}
+    <div id="setup-panel" style="display:none;">
+      <h3 class="panel-heading">🛡️ Choose Your Defenses</h3>
+      <p class="panel-sub">Select exactly <strong>2</strong> defenses before the game begins.</p>
+      <form id="defense-form">
+        {% for key, defense in analyst_defenses.items() %}
+        <label class="defense-option" data-defense-id="{{ key }}">
+          <input type="checkbox" name="defense" value="{{ key }}" class="defense-checkbox" />
+          <span class="defense-icon">{{ defense.icon }}</span>
+          <span class="defense-info">
+            <span class="defense-label">{{ defense.label }}</span>
+            <span class="defense-desc">{{ defense.description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+        <button type="submit" id="confirm-defenses-btn" class="btn btn-blue btn-block" disabled>
+          Confirm Defenses (0/2 selected)
+        </button>
+      </form>
+    </div>
+
+    {# === ATTACKER WAITING FOR SETUP === #}
+    <div id="attacker-wait-setup" style="display:none;">
+      <div class="waiting-msg">
+        <span class="wait-icon">⏳</span>
+        <p>Waiting for the analyst to deploy their defenses…</p>
+      </div>
+    </div>
+
+    {# === ATTACKER ACTIONS === #}
+    <div id="attacker-actions" style="display:none;">
+      <h3 class="panel-heading attacker-heading">⚔️ Attacker Actions</h3>
+      <p class="panel-sub" id="attacker-turn-msg">Choose your next move.</p>
+      <div class="action-buttons" id="attacker-action-btns">
+        {% for key, action in attacker_actions.items() %}
+        <button class="action-btn attacker-action-btn" data-action-id="{{ key }}"
+                title="{{ action.description }}">
+          <span class="action-icon">{{ action.icon }}</span>
+          <span class="action-label">{{ action.label }}</span>
+          {% if action.get('requires_progress') %}
+          <span class="action-lock" data-requires="{{ action.requires_progress }}">
+            🔒 {{ action.requires_progress }}%
+          </span>
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# === ANALYST ACTIONS === #}
+    <div id="analyst-actions" style="display:none;">
+      <h3 class="panel-heading analyst-heading">🛡️ Analyst Responses</h3>
+      <p class="panel-sub" id="analyst-turn-msg">React to the latest threat.</p>
+      <div class="action-buttons" id="analyst-action-btns">
+        {% for key, action in analyst_actions.items() %}
+        <button class="action-btn analyst-action-btn" data-action-id="{{ key }}"
+                title="{{ action.description }}">
+          <span class="action-icon">{{ action.icon }}</span>
+          <span class="action-label">{{ action.label }}</span>
+          {% if action.is_containment %}
+          <span class="containment-tag">Containment</span>
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# === WAITING FOR OPPONENT === #}
+    <div id="waiting-turn" style="display:none;">
+      <div class="waiting-msg">
+        <span class="wait-icon">⏳</span>
+        <p id="waiting-text">Waiting for opponent…</p>
+      </div>
+    </div>
+
+    {# === GAME OVER === #}
+    <div id="game-over-panel" style="display:none;">
+      <div class="game-over-box" id="game-over-box">
+        <span class="game-over-icon" id="game-over-icon">🏆</span>
+        <h2 id="game-over-title">Game Over</h2>
+        <p id="game-over-reason"></p>
+        <p class="game-over-sub" id="game-over-sub"></p>
+        <a href="{{ url_for('duel_lobby') }}" class="btn btn-primary" style="margin-top:1rem;">
+          Back to Lobby
+        </a>
+      </div>
+    </div>
+
+  </div>{# end .game-actions-panel #}
+
+  {# Right panel — logs + alerts #}
+  <div class="game-panel game-log-panel">
+
+    {# Active alerts #}
+    <div id="alerts-section">
+      <h3 class="panel-heading">🚨 Active Alerts</h3>
+      <div id="alerts-container" class="alerts-container">
+        <p class="log-empty">No alerts yet.</p>
+      </div>
+    </div>
+
+    {# Live log feed #}
+    <div style="margin-top:1.5rem;">
+      <h3 class="panel-heading">📋 Live Log Feed</h3>
+      <div id="log-container" class="log-container">
+        <p class="log-empty">Waiting for game to start…</p>
+      </div>
+    </div>
+
+  </div>{# end .game-log-panel #}
+</div>{# end .game-layout #}
+
+{# ── Status toast ─────────────────────────────────────────────────────────── #}
+<div id="duel-toast" class="duel-toast" style="display:none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<script>
+  window.CURRENT_USER  = "{{ session.username | e }}";
+  window.LOBBY_ID      = "{{ lobby_id | e }}";
+  window.PLAYER_ROLE   = "{{ role | e }}";
+  window.LOBBY_URL     = "{{ url_for('duel_lobby') }}";
+</script>
+<script src="{{ url_for('static', filename='js/duel.js') }}"></script>
+{% endblock %}

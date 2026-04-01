@@ -9,11 +9,16 @@ from datetime import datetime, timezone
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, flash)
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
+import duel as duel_engine
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'cyberportal-secret-key-change-in-prod')
+
+# Initialise SocketIO with eventlet async mode for production-ready WebSockets
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
@@ -341,6 +346,253 @@ def teacher_reset():
     return jsonify({'status': 'ok', 'removed': removed})
 
 
+
+# ── Duel routes ───────────────────────────────────────────────────────────────
+
+@app.route('/duel')
+@login_required
+def duel_lobby():
+    """Render the Red vs Blue Duel lobby page."""
+    return render_template(
+        'lobby.html',
+        analyst_defenses=duel_engine.ANALYST_DEFENSES,
+    )
+
+
+@app.route('/duel/game/<lobby_id>')
+@login_required
+def duel_game(lobby_id):
+    """Render the game screen for a specific lobby."""
+    username = session['username']
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        flash('Game not found.', 'danger')
+        return redirect(url_for('duel_lobby'))
+
+    # Determine role
+    if game['attacker']['username'] == username:
+        role = 'attacker'
+    elif game['analyst']['username'] == username:
+        role = 'analyst'
+    else:
+        flash('You are not in this game.', 'danger')
+        return redirect(url_for('duel_lobby'))
+
+    return render_template(
+        'game.html',
+        lobby_id=lobby_id,
+        role=role,
+        analyst_defenses=duel_engine.ANALYST_DEFENSES,
+        attacker_actions=duel_engine.ATTACKER_ACTIONS,
+        analyst_actions=duel_engine.ANALYST_ACTIONS,
+    )
+
+
+# ── Duel Socket.IO events ─────────────────────────────────────────────────────
+
+@socketio.on('connect')
+def on_connect():
+    """Client connected — no special handling needed."""
+    pass
+
+
+@socketio.on('create_lobby')
+def on_create_lobby(data):
+    """
+    Create a new lobby and broadcast the updated lobby list.
+
+    Data: { lobby_name: str }
+    """
+    username = session.get('username')
+    if not username:
+        emit('error', {'msg': 'Not authenticated.'})
+        return
+
+    name = data.get('lobby_name', '').strip()
+    lobby = duel_engine.create_lobby(name, username, request.sid)
+    join_room(lobby['id'])
+    emit('lobby_created', {'lobby_id': lobby['id'], 'lobby_name': lobby['name']})
+    # Broadcast updated list to everyone on the lobby page
+    emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
+
+
+@socketio.on('join_lobby')
+def on_join_lobby(data):
+    """
+    Join an existing lobby.
+
+    Data: { lobby_id: str }
+    """
+    username = session.get('username')
+    if not username:
+        emit('error', {'msg': 'Not authenticated.'})
+        return
+
+    lobby_id = data.get('lobby_id', '')
+    lobby, err = duel_engine.join_lobby(lobby_id, username, request.sid)
+    if err:
+        emit('error', {'msg': err})
+        return
+
+    join_room(lobby_id)
+    # Notify the room that a player joined
+    emit('player_joined', {
+        'lobby_id': lobby_id,
+        'players': [p['username'] for p in lobby['players']],
+    }, to=lobby_id)
+    emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
+
+    # Auto-start game when two players are present
+    if len(lobby['players']) == 2:
+        game = duel_engine.start_game(lobby_id)
+        emit('start_game', {
+            'lobby_id': lobby_id,
+            'attacker': game['attacker']['username'],
+            'analyst': game['analyst']['username'],
+        }, to=lobby_id)
+        emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
+
+
+@socketio.on('leave_lobby')
+def on_leave_lobby(data):
+    """
+    Leave a lobby.
+
+    Data: { lobby_id: str }
+    """
+    username = session.get('username')
+    if not username:
+        return
+
+    lobby_id = data.get('lobby_id', '')
+    updated = duel_engine.leave_lobby(lobby_id, username)
+    leave_room(lobby_id)
+
+    if updated:
+        emit('player_left', {
+            'lobby_id': lobby_id,
+            'players': [p['username'] for p in updated['players']],
+        }, to=lobby_id)
+    emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
+
+
+@socketio.on('get_lobbies')
+def on_get_lobbies():
+    """Return the current lobby list to the requesting client."""
+    emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()})
+
+
+@socketio.on('join_game_room')
+def on_join_game_room(data):
+    """
+    Join the Socket.IO room for a specific game and receive the initial state.
+
+    Data: { lobby_id: str }
+    """
+    username = session.get('username')
+    lobby_id = data.get('lobby_id', '')
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        emit('error', {'msg': 'Game not found.'})
+        return
+
+    join_room(lobby_id)
+
+    # Determine role and send full initial state
+    if game['attacker']['username'] == username:
+        role = 'attacker'
+    elif game['analyst']['username'] == username:
+        role = 'analyst'
+    else:
+        emit('error', {'msg': 'You are not a player in this game.'})
+        return
+
+    state = duel_engine.get_game_state_for_player(lobby_id, role)
+    emit('update_game_state', state)
+
+
+@socketio.on('select_defenses')
+def on_select_defenses(data):
+    """
+    Analyst selects 2 defenses during the setup phase.
+
+    Data: { lobby_id: str, defenses: [str, str] }
+    """
+    username = session.get('username')
+    lobby_id = data.get('lobby_id', '')
+    defenses = data.get('defenses', [])
+
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        emit('error', {'msg': 'Game not found.'})
+        return
+    if game['analyst']['username'] != username:
+        emit('error', {'msg': 'Only the analyst can select defenses.'})
+        return
+
+    state, err = duel_engine.analyst_select_defenses(lobby_id, defenses)
+    if err:
+        emit('error', {'msg': err})
+        return
+
+    # Broadcast updated state to both players
+    _broadcast_game_state(lobby_id)
+
+
+@socketio.on('player_action')
+def on_player_action(data):
+    """
+    A player submits an action during gameplay.
+
+    Data: { lobby_id: str, action_id: str }
+    """
+    username = session.get('username')
+    lobby_id = data.get('lobby_id', '')
+    action_id = data.get('action_id', '')
+
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        emit('error', {'msg': 'Game not found.'})
+        return
+
+    if game['attacker']['username'] == username:
+        state, err = duel_engine.process_attacker_action(lobby_id, action_id)
+    elif game['analyst']['username'] == username:
+        state, err = duel_engine.process_analyst_action(lobby_id, action_id)
+    else:
+        emit('error', {'msg': 'You are not a player in this game.'})
+        return
+
+    if err:
+        emit('error', {'msg': err})
+        return
+
+    # If the game ended, save the result
+    if state['status'] == 'ended':
+        duel_engine.save_duel_result(ATTEMPTS_FILE, lobby_id, load_json, save_json)
+
+    _broadcast_game_state(lobby_id)
+
+
+def _broadcast_game_state(lobby_id: str) -> None:
+    """
+    Emit tailored game-state updates to each player in *lobby_id*.
+
+    The attacker receives their own view; the analyst receives theirs.
+    """
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        return
+    attacker_sid = game['attacker']['sid']
+    analyst_sid  = game['analyst']['sid']
+
+    attacker_state = duel_engine.get_game_state_for_player(lobby_id, 'attacker')
+    analyst_state  = duel_engine.get_game_state_for_player(lobby_id, 'analyst')
+
+    socketio.emit('update_game_state', attacker_state, to=attacker_sid)
+    socketio.emit('update_game_state', analyst_state,  to=analyst_sid)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -349,4 +601,4 @@ if __name__ == '__main__':
     os.makedirs(SCENARIOS_DIR, exist_ok=True)
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     host  = os.environ.get('FLASK_HOST', '0.0.0.0')
-    app.run(host=host, debug=debug, port=5000)
+    socketio.run(app, host=host, debug=debug, port=5000)
