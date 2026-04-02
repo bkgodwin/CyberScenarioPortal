@@ -135,6 +135,9 @@ ANALYST_ACTIONS = {
     },
 }
 
+# Multiplier applied to phishing effectiveness when the attacker lacks the required intel
+MISSING_INTEL_PENALTY = 0.6
+
 # ── Attacker intel source definitions ─────────────────────────────────────────
 INTEL_SOURCES = {
     "linkedin_scrape": {
@@ -223,6 +226,16 @@ _INTERESTS_POOL = [
     "{ceo} wine enthusiast; follows Napa Valley vineyards and posts tasting notes.",
     "{ceo} landscape photographer; active on Instagram with 2.3K followers.",
 ]
+
+
+def _spoof_domain(email: str, domain: str, suffix: str) -> str:
+    """Replace the domain portion of an email with a lookalike for BEC spoofing."""
+    at = email.rfind("@")
+    if at == -1:
+        return email
+    user_part = email[:at]
+    spoofed = domain.replace(".", f"-{suffix}.", 1) + ".net"
+    return f"{user_part}@{spoofed}"
 
 
 def _fmt_email(first: str, last: str, fmt_fn) -> str:
@@ -393,8 +406,8 @@ def _compute_phishing_email_options(game: dict) -> list:
             ),
             "from_display": tmpl["from_display"].format(
                 domain=domain, ceo_name=ceo, it_admin=it_admin,
-                ceo_email_spoof=ceo_email.replace(domain, domain.replace(".", "-mail.") + ".net"),
-                it_email_spoof=it_email.replace(domain, domain.replace(".", "-it.") + ".net"),
+                ceo_email_spoof=_spoof_domain(ceo_email, domain, "mail"),
+                it_email_spoof=_spoof_domain(it_email, domain, "it"),
             ),
             "preview":      tmpl["preview"].format(
                 domain=domain, first_name=first_name,
@@ -569,7 +582,7 @@ root@kali:~# python3 gophish_campaign.py --config invoice_bec.yml
 [!] Finance-themed hook — higher click-through expected""",
             "ceo_wire_transfer": f"""\
 root@kali:~# python3 bec_spoof.py --target finance@{domain} \\
-    --from "{ceo} <{ceo_email.replace(domain, domain.replace('.', '-mail.') + '.net')}>"
+    --from "{ceo} <{_spoof_domain(ceo_email, domain, 'mail')}>"
 [*] Business Email Compromise (BEC) module
 [*] Spoofed sender : {ceo} (lookalike domain)
 [*] Target dept    : Finance / Accounts Payable
@@ -596,7 +609,7 @@ root@kali:~# python3 gophish_campaign.py --config linkedin_lure.yml
     Creds   : {creds}""",
             "it_helpdesk_ticket": f"""\
 root@kali:~# python3 bec_spoof.py --target all-staff@{domain} \\
-    --from "{it_admin} <{intel.get('_it_email','it@'+domain).replace(domain,domain.replace('.', '-it.') + '.net')}>"
+    --from "{it_admin} <{_spoof_domain(intel.get('_it_email', 'it@' + domain), domain, 'it')}>"
 [*] Spear-phish module — IT HelpDesk impersonation
 [*] Spoofed sender : {it_admin} (IT Systems)
 [*] Subject        : "Re: Your IT Ticket — Action Required"
@@ -1052,7 +1065,7 @@ def process_attacker_action(
         if email_tmpl:
             sources   = game.get("attacker_intel_sources", [])
             has_intel = all(r in sources for r in email_tmpl["requires_intel"])
-            mult      = email_tmpl["progress_mult"] if has_intel else email_tmpl["progress_mult"] * 0.6
+            mult      = email_tmpl["progress_mult"] if has_intel else email_tmpl["progress_mult"] * MISSING_INTEL_PENALTY
             detection_risk = max(0.05, min(0.95, detection_risk + email_tmpl["detection_adj"]))
         else:
             mult = 0.80  # fallback: treat as generic
