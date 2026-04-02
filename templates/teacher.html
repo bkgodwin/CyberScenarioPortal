@@ -208,28 +208,6 @@
   </div>
 </section>
 
-<!-- ── Reset Student ─────────────────────────────────────────────────────── -->
-<section class="section">
-  <h2 class="section-title">Reset Student Attempts</h2>
-  <div class="reset-card">
-    <div class="form-group" style="display:flex;gap:1rem;align-items:flex-end;">
-      <div style="flex:1">
-        <label class="form-label" for="reset-username">Student Username</label>
-        <select class="form-control" id="reset-username">
-          <option value="">— select a student —</option>
-          {% for s in students %}
-          <option value="{{ s.username }}">{{ s.name or s.username }} ({{ s.username }})</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button class="btn btn-danger" onclick="resetSelectedStudent()">
-        Reset Attempts 🗑️
-      </button>
-    </div>
-    <div id="reset-feedback" class="form-hint" style="margin-top:0.5rem"></div>
-  </div>
-</section>
-
 <!-- ── Settings ──────────────────────────────────────────────────────────── -->
 <section class="section">
   <h2 class="section-title">⚙️ Portal Settings</h2>
@@ -309,16 +287,6 @@
     } catch (e) {
       alert('Network error: ' + e.message);
     }
-  }
-
-  async function resetSelectedStudent() {
-    const sel      = document.getElementById('reset-username');
-    const username = sel.value;
-    if (!username) {
-      document.getElementById('reset-feedback').textContent = 'Please select a student first.';
-      return;
-    }
-    await resetStudent(username);
   }
 
   async function deleteUser(username) {

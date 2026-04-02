@@ -50,8 +50,8 @@
 
     {# === ANALYST SETUP PHASE === #}
     <div id="setup-panel" style="display:none;">
-      <h3 class="panel-heading">🛡️ Choose Your Defenses</h3>
-      <p class="panel-sub">Select exactly <strong>2</strong> defenses before the game begins.</p>
+      <h3 class="panel-heading analyst-heading">🛡️ Deploy Your Defenses</h3>
+      <p class="panel-sub">Select exactly <strong>2</strong> defenses to deploy before the game begins.</p>
       <form id="defense-form">
         {% for key, defense in analyst_defenses.items() %}
         <label class="defense-option" data-defense-id="{{ key }}">
@@ -69,17 +69,47 @@
       </form>
     </div>
 
-    {# === ATTACKER WAITING FOR SETUP === #}
-    <div id="attacker-wait-setup" style="display:none;">
+    {# === ANALYST WAITING FOR ATTACKER INTEL === #}
+    <div id="analyst-wait-attacker" style="display:none;">
       <div class="waiting-msg">
-        <span class="wait-icon">⏳</span>
-        <p>Waiting for the analyst to deploy their defenses…</p>
+        <span class="wait-icon">✅</span>
+        <p>Defenses deployed. Waiting for attacker to complete OSINT…</p>
+      </div>
+    </div>
+
+    {# === ATTACKER INTEL SETUP PHASE === #}
+    <div id="attacker-intel-setup" style="display:none;">
+      <h3 class="panel-heading attacker-heading">🕵️ Intelligence Gathering</h3>
+      <p class="panel-sub">Select exactly <strong>2</strong> OSINT sources before launching your attack.
+        Better intel = more effective social engineering.</p>
+      <form id="intel-form">
+        {% for key, source in intel_sources.items() %}
+        <label class="defense-option intel-option" data-source-id="{{ key }}">
+          <input type="checkbox" name="intel_source" value="{{ key }}" class="intel-checkbox" />
+          <span class="defense-icon">{{ source.icon }}</span>
+          <span class="defense-info">
+            <span class="defense-label">{{ source.label }}</span>
+            <span class="defense-desc">{{ source.description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+        <button type="submit" id="confirm-intel-btn" class="btn btn-red btn-block" disabled>
+          Begin OSINT Recon (0/2 selected)
+        </button>
+      </form>
+    </div>
+
+    {# === ATTACKER WAITING FOR ANALYST === #}
+    <div id="attacker-wait-analyst" style="display:none;">
+      <div class="waiting-msg">
+        <span class="wait-icon">✅</span>
+        <p>OSINT complete. Waiting for analyst to deploy defenses…</p>
       </div>
     </div>
 
     {# === ATTACKER ACTIONS === #}
     <div id="attacker-actions" style="display:none;">
-      <h3 class="panel-heading attacker-heading">⚔️ Attacker Actions</h3>
+      <h3 class="panel-heading attacker-heading">⚔️ Attack Arsenal</h3>
       <p class="panel-sub" id="attacker-turn-msg">Choose your next move.</p>
       <div class="action-buttons" id="attacker-action-btns">
         {% for key, action in attacker_actions.items() %}
@@ -99,7 +129,7 @@
 
     {# === ANALYST ACTIONS === #}
     <div id="analyst-actions" style="display:none;">
-      <h3 class="panel-heading analyst-heading">🛡️ Analyst Responses</h3>
+      <h3 class="panel-heading analyst-heading">🛡️ SOC Responses</h3>
       <p class="panel-sub" id="analyst-turn-msg">React to the latest threat.</p>
       <div class="action-buttons" id="analyst-action-btns">
         {% for key, action in analyst_actions.items() %}
@@ -138,20 +168,31 @@
 
   </div>{# end .game-actions-panel #}
 
-  {# Right panel — logs + alerts #}
+  {# Right panel — SIEM / terminal output #}
   <div class="game-panel game-log-panel">
 
-    {# Active alerts #}
-    <div id="alerts-section">
+    {# Last action output (CLI for attacker, SIEM tool for analyst) #}
+    <div id="action-output-section" style="display:none;">
+      <h3 class="panel-heading" id="action-output-heading">💻 Terminal Output</h3>
+      <pre id="action-output" class="terminal-output"></pre>
+    </div>
+
+    {# Active alerts — SIEM style #}
+    <div id="alerts-section" style="margin-top:0;">
       <h3 class="panel-heading">🚨 Active Alerts</h3>
       <div id="alerts-container" class="alerts-container">
         <p class="log-empty">No alerts yet.</p>
       </div>
     </div>
 
-    {# Live log feed #}
+    {# Live SIEM log feed #}
     <div style="margin-top:1.5rem;">
-      <h3 class="panel-heading">📋 Live Log Feed</h3>
+      <h3 class="panel-heading" id="log-feed-heading">📋 SIEM Event Log</h3>
+      <div class="siem-header">
+        <span class="siem-col siem-col-time">TIME</span>
+        <span class="siem-col siem-col-src">SOURCE</span>
+        <span class="siem-col siem-col-event">EVENT</span>
+      </div>
       <div id="log-container" class="log-container">
         <p class="log-empty">Waiting for game to start…</p>
       </div>
@@ -159,6 +200,30 @@
 
   </div>{# end .game-log-panel #}
 </div>{# end .game-layout #}
+
+{# ── Intel pane (attacker only) ───────────────────────────────────────────── #}
+<div id="intel-pane" class="intel-pane" style="display:none;">
+  <div class="intel-pane-header">
+    <span>🗂️ <strong>OSINT Dossier</strong> — Eyes Only</span>
+    <button class="intel-toggle-btn" id="intel-toggle-btn" onclick="toggleIntelPane()">▼ Collapse</button>
+  </div>
+  <div id="intel-pane-body" class="intel-pane-body">
+    <div id="intel-content" class="intel-content">
+      <p class="log-empty">Conducting OSINT…</p>
+    </div>
+  </div>
+</div>
+
+{# ── Phishing email selection modal ───────────────────────────────────────── #}
+<div id="phishing-modal-overlay" class="modal-overlay" style="display:none;">
+  <div class="modal-box">
+    <h3 class="modal-title">🎣 Select Phishing Email Template</h3>
+    <p class="modal-sub">Choose the email to send. Effectiveness depends on your gathered intel.</p>
+    <div id="phishing-email-list" class="phishing-email-list"></div>
+    <button class="btn btn-sm" style="margin-top:1rem;opacity:.7;"
+            onclick="closePhishingModal()">✕ Cancel</button>
+  </div>
+</div>
 
 {# ── Status toast ─────────────────────────────────────────────────────────── #}
 <div id="duel-toast" class="duel-toast" style="display:none;"></div>
@@ -181,3 +246,4 @@
   });
 </script>
 {% endblock %}
+

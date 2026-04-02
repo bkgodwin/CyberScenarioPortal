@@ -729,6 +729,7 @@ def duel_game(lobby_id):
         analyst_defenses=duel_engine.ANALYST_DEFENSES,
         attacker_actions=duel_engine.ATTACKER_ACTIONS,
         analyst_actions=duel_engine.ANALYST_ACTIONS,
+        intel_sources=duel_engine.INTEL_SOURCES,
     )
 
 
@@ -927,6 +928,33 @@ def on_leave_game(data):
             }, to=opponent_sid)
 
 
+@socketio.on('select_intel')
+def on_select_intel(data):
+    """
+    Attacker selects 2 intel sources during the setup phase.
+
+    Data: { lobby_id: str, sources: [str, str] }
+    """
+    username = session.get('username')
+    lobby_id = data.get('lobby_id', '')
+    sources  = data.get('sources', [])
+
+    game = duel_engine.games.get(lobby_id)
+    if not game:
+        emit('error', {'msg': 'Game not found.'})
+        return
+    if game['attacker']['username'] != username:
+        emit('error', {'msg': 'Only the attacker can select intel sources.'})
+        return
+
+    state, err = duel_engine.attacker_select_intel(lobby_id, sources)
+    if err:
+        emit('error', {'msg': err})
+        return
+
+    _broadcast_game_state(lobby_id)
+
+
 @socketio.on('select_defenses')
 def on_select_defenses(data):
     """
@@ -971,7 +999,8 @@ def on_player_action(data):
         return
 
     if game['attacker']['username'] == username:
-        state, err = duel_engine.process_attacker_action(lobby_id, action_id)
+        extra = {k: v for k, v in data.items() if k not in ('lobby_id', 'action_id')}
+        state, err = duel_engine.process_attacker_action(lobby_id, action_id, extra)
     elif game['analyst']['username'] == username:
         state, err = duel_engine.process_analyst_action(lobby_id, action_id)
     else:
