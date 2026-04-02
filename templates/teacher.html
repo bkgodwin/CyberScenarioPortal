@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
   <h1 class="page-title">Teacher Dashboard 📊</h1>
-  <p class="page-subtitle">Monitor student progress, manage scenarios, and reset attempts.</p>
+  <p class="page-subtitle">Monitor student progress, manage users, scenarios, and settings.</p>
 </div>
 
 <!-- ── Summary stats ────────────────────────────────────────────────────── -->
@@ -23,6 +23,49 @@
     <div class="stat-label">Scenarios Available</div>
   </div>
 </div>
+
+<!-- ── Gradebook ─────────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">📚 Gradebook</h2>
+  {% if scenario_ids %}
+    <div class="attempts-table-wrap">
+      <table class="attempts-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            {% for sid in scenario_ids %}
+            <th title="{{ scenarios[sid].get('title', sid) }}">{{ scenarios[sid].get('title', sid) | truncate(20, True) }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for st in students %}
+          <tr>
+            <td><span class="student-name">{{ st.name or st.username }}</span> <small style="opacity:.5;">{{ st.username }}</small></td>
+            {% for sid in scenario_ids %}
+              {% set score = gradebook.get(st.username, {}).get(sid) %}
+              <td>
+                {% if score is not none and score >= 0 %}
+                  <span class="score-badge {% if score >= 60 %}score-good{% elif score >= 20 %}score-mid{% else %}score-bad{% endif %}">
+                    {{ score }}
+                  </span>
+                {% else %}
+                  <span style="opacity:.3;">—</span>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state small">
+      <span class="empty-icon">📭</span>
+      <p>No scenarios uploaded yet — upload one below.</p>
+    </div>
+  {% endif %}
+</section>
 
 <!-- ── Student Attempts ──────────────────────────────────────────────────── -->
 <section class="section">
@@ -43,9 +86,7 @@
         <tbody>
           {% for attempt in all_attempts | sort(attribute='timestamp', reverse=True) %}
           <tr>
-            <td>
-              <span class="student-name">{{ attempt.username }}</span>
-            </td>
+            <td><span class="student-name">{{ attempt.username }}</span></td>
             <td>{{ attempt.scenario_id }}</td>
             <td>
               <span class="score-badge {% if attempt.total_score >= 60 %}score-good{% elif attempt.total_score >= 20 %}score-mid{% else %}score-bad{% endif %}">
@@ -70,6 +111,81 @@
     <div class="empty-state">
       <span class="empty-icon">📭</span>
       <p>No student attempts recorded yet.</p>
+    </div>
+  {% endif %}
+</section>
+
+<!-- ── User Management ───────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">👥 User Management</h2>
+
+  <!-- Add new student -->
+  <div class="upload-card" style="margin-bottom:1.5rem;">
+    <h3 style="margin:0 0 1rem;font-size:1rem;">Add New Student</h3>
+    <form method="POST" action="{{ url_for('teacher_add_user') }}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;align-items:flex-end;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Username</label>
+        <input class="form-control" type="text" name="username" placeholder="username" required />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Full Name</label>
+        <input class="form-control" type="text" name="name" placeholder="Full name" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Email</label>
+        <input class="form-control" type="email" name="email" placeholder="email@example.com" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Password <small style="opacity:.6;">(optional)</small></label>
+        <input class="form-control" type="password" name="password" placeholder="leave blank for no password" />
+      </div>
+      <button type="submit" class="btn btn-primary">Add Student</button>
+    </form>
+  </div>
+
+  <!-- Student list with actions -->
+  {% if students %}
+  <div class="attempts-table-wrap">
+    <table class="attempts-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Has Password</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for st in students %}
+        <tr>
+          <td><code>{{ st.username }}</code></td>
+          <td>{{ st.name or '—' }}</td>
+          <td>{{ st.email or '—' }}</td>
+          <td>{% if st.password_hash %}✅{% else %}❌{% endif %}</td>
+          <td style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-outline"
+                    onclick="changePassword('{{ st.username | e }}', 'student')">
+              🔑 Change PW
+            </button>
+            <button class="btn btn-sm btn-danger"
+                    onclick="deleteUser('{{ st.username | e }}')">
+              🗑️ Delete
+            </button>
+            <button class="btn btn-sm btn-outline"
+                    onclick="resetStudent('{{ st.username | e }}')">
+              ↩️ Reset Attempts
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state small">
+      <span class="empty-icon">👥</span>
+      <p>No students registered yet.</p>
     </div>
   {% endif %}
 </section>
@@ -102,7 +218,7 @@
         <select class="form-control" id="reset-username">
           <option value="">— select a student —</option>
           {% for s in students %}
-          <option value="{{ s }}">{{ s }}</option>
+          <option value="{{ s.username }}">{{ s.name or s.username }} ({{ s.username }})</option>
           {% endfor %}
         </select>
       </div>
@@ -114,19 +230,73 @@
   </div>
 </section>
 
+<!-- ── Settings ──────────────────────────────────────────────────────────── -->
+<section class="section">
+  <h2 class="section-title">⚙️ Portal Settings</h2>
+  <div class="upload-card">
+    <form method="POST" action="{{ url_for('teacher_update_settings') }}">
+      <div class="form-group" style="display:flex;align-items:center;gap:1rem;">
+        <input type="checkbox" id="signup_enabled" name="signup_enabled"
+               {% if settings.signup_enabled %}checked{% endif %} />
+        <label for="signup_enabled" class="form-label" style="margin:0;cursor:pointer;">
+          Allow new student self-registration
+        </label>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:1rem;">
+        <input type="checkbox" id="duel_enabled" name="duel_enabled"
+               {% if settings.duel_enabled %}checked{% endif %} />
+        <label for="duel_enabled" class="form-label" style="margin:0;cursor:pointer;">
+          Enable Red vs Blue Duel mode
+        </label>
+      </div>
+
+      {% if scenario_list %}
+      <div class="form-group">
+        <label class="form-label">Enabled Scenarios</label>
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          {% for sc in scenario_list %}
+          <label style="display:flex;align-items:center;gap:.75rem;cursor:pointer;">
+            <input type="checkbox" name="enabled_scenarios" value="{{ sc.id }}"
+                   {% if sc.id not in settings.disabled_scenarios %}checked{% endif %} />
+            <span>{{ sc.title }} <small style="opacity:.5;">({{ sc.id }})</small></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <button type="submit" class="btn btn-primary">Save Settings ✅</button>
+    </form>
+  </div>
+
+  <!-- Change own password -->
+  <div class="upload-card" style="margin-top:1rem;">
+    <h3 style="margin:0 0 1rem;font-size:1rem;">Change Admin Password</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;align-items:flex-end;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Current Password</label>
+        <input class="form-control" type="password" id="current-pw" placeholder="••••••••" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">New Password</label>
+        <input class="form-control" type="password" id="new-pw" placeholder="Min. 6 chars" />
+      </div>
+      <button class="btn btn-outline" onclick="changeOwnPassword()">Update Password</button>
+    </div>
+    <div id="own-pw-feedback" class="form-hint" style="margin-top:.5rem;"></div>
+  </div>
+</section>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-  /**
-   * POST to /teacher/reset to remove all attempts for the given username.
-   */
   async function resetStudent(username) {
     if (!confirm(`Remove ALL attempts for "${username}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch('/teacher/reset', {
+      const res  = await fetch('/teacher/reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ username }),
       });
       const data = await res.json();
@@ -142,13 +312,79 @@
   }
 
   async function resetSelectedStudent() {
-    const sel = document.getElementById('reset-username');
+    const sel      = document.getElementById('reset-username');
     const username = sel.value;
     if (!username) {
       document.getElementById('reset-feedback').textContent = 'Please select a student first.';
       return;
     }
     await resetStudent(username);
+  }
+
+  async function deleteUser(username) {
+    if (!confirm(`Permanently delete student "${username}" and all their data?`)) return;
+    try {
+      const res  = await fetch('/teacher/delete_user', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Student "${username}" deleted.`);
+        location.reload();
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Network error: ' + e.message);
+    }
+  }
+
+  async function changePassword(username, role) {
+    const newPw = prompt(`Set new password for "${username}":`);
+    if (!newPw) return;
+    if (newPw.length < 6) { alert('Password must be at least 6 characters.'); return; }
+    try {
+      const res  = await fetch('/teacher/change_password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, role, new_password: newPw }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Password updated for "${username}".`);
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Network error: ' + e.message);
+    }
+  }
+
+  async function changeOwnPassword() {
+    const currentPw = document.getElementById('current-pw').value;
+    const newPw     = document.getElementById('new-pw').value;
+    const feedback  = document.getElementById('own-pw-feedback');
+    if (!currentPw || !newPw) { feedback.textContent = 'Both fields are required.'; return; }
+    if (newPw.length < 6) { feedback.textContent = 'New password must be at least 6 characters.'; return; }
+    try {
+      const res  = await fetch('/teacher/change_own_password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        feedback.textContent = '✅ Password updated successfully.';
+        document.getElementById('current-pw').value = '';
+        document.getElementById('new-pw').value     = '';
+      } else {
+        feedback.textContent = '❌ ' + (data.error || 'Unknown error');
+      }
+    } catch (e) {
+      feedback.textContent = 'Network error: ' + e.message;
+    }
   }
 </script>
 {% endblock %}

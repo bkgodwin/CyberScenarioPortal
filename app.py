@@ -5,17 +5,18 @@ Cybersecurity Scenario Portal - Flask Backend
 import os
 import json
 import uuid
+import tempfile
 from datetime import datetime, timezone
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, flash)
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.utils import secure_filename
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 import duel as duel_engine
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'cyberportal-secret-key-change-in-prod')
+app.secret_key = os.environ.get('SECRET_KEY', 'cyberportal-dev-key-change-in-production')
 
 # Initialise SocketIO with threading async mode (compatible with Python 3.13+)
 socketio = SocketIO(app, async_mode='threading', cors_allowed_origins='*')
@@ -29,13 +30,20 @@ ATTEMPTS_FILE  = os.path.join(DATA_DIR, 'attempts.json')
 
 ALLOWED_EXTENSIONS = {'json'}
 
+# ── In-memory SID tracking ────────────────────────────────────────────────────
+sid_to_game  = {}   # sid -> lobby_id (game rooms)
+sid_to_lobby = {}   # sid -> lobby_id (lobby rooms)
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def load_json(path):
     """Read and return parsed JSON from *path*."""
     try:
         with open(path, 'r', encoding='utf-8') as fh:
-            return json.load(fh)
+            content = fh.read().strip()
+            if not content:
+                return [] if path == ATTEMPTS_FILE else {}
+            return json.loads(content)
     except FileNotFoundError:
         raise RuntimeError(f"Required data file not found: {path}")
     except json.JSONDecodeError as exc:
@@ -43,9 +51,39 @@ def load_json(path):
 
 
 def save_json(path, data):
-    """Serialise *data* to *path* with pretty-printing."""
-    with open(path, 'w', encoding='utf-8') as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False)
+    """Serialise *data* to *path* atomically (write temp then rename)."""
+    dir_name = os.path.dirname(path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def get_settings():
+    """Load users.json and return the settings dict with defaults."""
+    try:
+        users = load_json(USERS_FILE)
+    except RuntimeError:
+        return {'signup_enabled': True, 'duel_enabled': True, 'disabled_scenarios': []}
+    settings = users.get('settings', {})
+    settings.setdefault('signup_enabled', True)
+    settings.setdefault('duel_enabled', True)
+    settings.setdefault('disabled_scenarios', [])
+    return settings
+
+
+def get_student(entry):
+    """Return a normalised student dict regardless of old (str) or new (dict) format."""
+    if isinstance(entry, str):
+        return {'username': entry, 'name': entry.title(), 'email': '', 'password_hash': ''}
+    return entry
 
 
 def load_scenarios():
@@ -54,14 +92,16 @@ def load_scenarios():
     Every .json file whose top-level 'id' field matches the file stem is loaded.
     """
     scenarios = {}
+    if not os.path.isdir(SCENARIOS_DIR):
+        return scenarios
     for fname in os.listdir(SCENARIOS_DIR):
         if fname.endswith('.json'):
             path = os.path.join(SCENARIOS_DIR, fname)
             try:
                 data = load_json(path)
                 scenarios[data['id']] = data
-            except (KeyError, json.JSONDecodeError):
-                pass  # skip malformed files
+            except (KeyError, RuntimeError) as e:
+                app.logger.warning("Skipping malformed scenario file %s: %s", fname, e)
     return scenarios
 
 
@@ -75,6 +115,20 @@ def get_phase(scenario, phase_id):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# ── Security headers ──────────────────────────────────────────────────────────
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' ws: wss:;"
+    )
+    return response
 
 
 # ── Auth decorators ──────────────────────────────────────────────────────────
@@ -105,12 +159,13 @@ def teacher_required(f):
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    """Login page — two tabs: student (username only) and teacher (username + password)."""
+    """Login page — tabs: student login, teacher login, register."""
     if 'username' in session:
-        # Already logged in — send to the right dashboard
         if session.get('role') == 'teacher':
             return redirect(url_for('teacher_dashboard'))
         return redirect(url_for('dashboard'))
+
+    settings = get_settings()
 
     if request.method == 'POST':
         login_type = request.form.get('login_type', 'student')
@@ -118,15 +173,14 @@ def login():
 
         if not username:
             flash('Username cannot be empty.', 'danger')
-            return render_template('login.html')
+            return render_template('login.html', signup_enabled=settings['signup_enabled'])
 
         users = load_json(USERS_FILE)
 
         if login_type == 'teacher':
             password = request.form.get('password', '')
-            # Validate against teachers list using hashed password comparison
             teacher = next(
-                (t for t in users['teachers'] if t['username'] == username),
+                (t for t in users.get('teachers', []) if t['username'] == username),
                 None
             )
             if teacher and check_password_hash(teacher.get('password_hash', ''), password):
@@ -135,17 +189,105 @@ def login():
                 return redirect(url_for('teacher_dashboard'))
             else:
                 flash('Invalid teacher credentials.', 'danger')
-                return render_template('login.html')
+                return render_template('login.html', signup_enabled=settings['signup_enabled'])
 
-        else:  # student login — create account on first visit
-            if username not in users['students']:
-                users['students'].append(username)
+        else:  # student login
+            # Find student by username or email
+            student_entry = None
+            for s in users.get('students', []):
+                sd = get_student(s)
+                if sd['username'] == username or (sd.get('email') and sd['email'] == username):
+                    student_entry = sd
+                    break
+
+            if student_entry is None:
+                if not settings.get('signup_enabled', True):
+                    flash('Account not found and new sign-ups are disabled. Contact your admin.', 'danger')
+                    return render_template('login.html', signup_enabled=False)
+                # Legacy auto-create (no password, username-only)
+                new_student = {
+                    'username':      username,
+                    'name':          username.title(),
+                    'email':         '',
+                    'password_hash': '',
+                }
+                users.setdefault('students', []).append(new_student)
                 save_json(USERS_FILE, users)
-            session['username'] = username
+                session['username'] = username
+                session['role']     = 'student'
+                return redirect(url_for('dashboard'))
+
+            # If student has a password hash, require password
+            if student_entry.get('password_hash'):
+                password = request.form.get('password', '')
+                if not password:
+                    flash('Password required for this account.', 'danger')
+                    return render_template('login.html', signup_enabled=settings['signup_enabled'])
+                if not check_password_hash(student_entry['password_hash'], password):
+                    flash('Invalid password.', 'danger')
+                    return render_template('login.html', signup_enabled=settings['signup_enabled'])
+
+            session['username'] = student_entry['username']
             session['role']     = 'student'
             return redirect(url_for('dashboard'))
 
-    return render_template('login.html')
+    return render_template('login.html', signup_enabled=settings['signup_enabled'])
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    """Register a new student account."""
+    settings = get_settings()
+    if not settings.get('signup_enabled', True):
+        flash('Registration is currently disabled.', 'danger')
+        return redirect(url_for('login'))
+
+    username = request.form.get('username', '').strip().lower()
+    name     = request.form.get('name', '').strip()
+    email    = request.form.get('email', '').strip().lower()
+    password = request.form.get('password', '')
+    confirm  = request.form.get('confirm_password', '')
+
+    errors = []
+    if not username:
+        errors.append('Username is required.')
+    if not name:
+        errors.append('Name is required.')
+    if not email:
+        errors.append('Email is required.')
+    if len(password) < 6:
+        errors.append('Password must be at least 6 characters.')
+    if password != confirm:
+        errors.append('Passwords do not match.')
+
+    if errors:
+        for e in errors:
+            flash(e, 'danger')
+        return redirect(url_for('login'))
+
+    users = load_json(USERS_FILE)
+    for s in users.get('students', []):
+        sd = get_student(s)
+        if sd['username'] == username:
+            flash('Username already taken.', 'danger')
+            return redirect(url_for('login'))
+        if sd.get('email') and sd['email'] == email:
+            flash('Email already registered.', 'danger')
+            return redirect(url_for('login'))
+
+    new_student = {
+        'username':      username,
+        'name':          name,
+        'email':         email,
+        'password_hash': generate_password_hash(password),
+    }
+    users.setdefault('students', []).append(new_student)
+    save_json(USERS_FILE, users)
+
+    session['username'] = username
+    session['role']     = 'student'
+    flash('Account created successfully!', 'success')
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/logout')
@@ -159,10 +301,16 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Student dashboard — lists all available scenarios and recent attempts."""
+    """Student dashboard — lists available scenarios and recent attempts."""
+    settings  = get_settings()
     scenarios = load_scenarios()
-    attempts  = load_json(ATTEMPTS_FILE)
-    # Only show this student's attempts, most recent first
+    disabled  = settings.get('disabled_scenarios', [])
+    visible   = {k: v for k, v in scenarios.items() if k not in disabled}
+
+    try:
+        attempts = load_json(ATTEMPTS_FILE)
+    except RuntimeError:
+        attempts = []
     my_attempts = sorted(
         [a for a in attempts if a.get('username') == session['username']],
         key=lambda a: a.get('timestamp', ''),
@@ -170,22 +318,34 @@ def dashboard():
     )[:10]
     return render_template(
         'dashboard.html',
-        scenarios=list(scenarios.values()),
-        attempts=my_attempts
+        scenarios=list(visible.values()),
+        attempts=my_attempts,
+        duel_enabled=settings.get('duel_enabled', True),
     )
+
+
+@app.route('/scenarios')
+@login_required
+def scenarios_view():
+    """Redirect to dashboard#scenarios anchor."""
+    return redirect(url_for('dashboard') + '#scenarios')
 
 
 @app.route('/scenario/<scenario_id>')
 @login_required
 def scenario_view(scenario_id):
     """Render the interactive scenario page."""
+    settings = get_settings()
+    if scenario_id in settings.get('disabled_scenarios', []):
+        flash('This scenario is currently disabled.', 'warning')
+        return redirect(url_for('dashboard'))
+
     scenarios = load_scenarios()
     scenario  = scenarios.get(scenario_id)
     if not scenario:
         flash('Scenario not found.', 'danger')
         return redirect(url_for('dashboard'))
 
-    # Pass the full scenario as JSON so the JS engine can drive the flow
     scenario_json = json.dumps(scenario)
     return render_template('scenario.html', scenario=scenario, scenario_json=scenario_json)
 
@@ -216,7 +376,6 @@ def api_submit_choice():
     if not phase:
         return jsonify({'error': 'Phase not found'}), 404
 
-    # Locate the chosen option
     choice = next((c for c in phase.get('choices', []) if c['id'] == choice_id), None)
     if not choice:
         return jsonify({'error': 'Choice not found'}), 404
@@ -244,21 +403,30 @@ def api_save_attempt():
     Body: { scenario_id, decisions: [{phase_id, choice_id, score_impact}],
             total_score, time_taken }
     """
-    data = request.get_json(force=True)
+    data        = request.get_json(force=True)
+    scenario_id = data.get('scenario_id')
+
+    # Validate that the scenario exists
+    scenarios = load_scenarios()
+    if scenario_id not in scenarios:
+        return jsonify({'error': 'Invalid scenario_id'}), 400
 
     attempt = {
         'id':             str(uuid.uuid4()),
         'username':       session['username'],
-        'scenario_id':    data.get('scenario_id'),
+        'scenario_id':    scenario_id,
         'decisions':      data.get('decisions', []),
         'total_score':    data.get('total_score', 0),
-        'time_taken':     data.get('time_taken', 0),        # seconds
+        'time_taken':     data.get('time_taken', 0),
         'hints_used':     data.get('hints_used', 0),
         'longest_streak': data.get('longest_streak', 0),
         'timestamp':      datetime.now(timezone.utc).isoformat(),
     }
 
-    attempts = load_json(ATTEMPTS_FILE)
+    try:
+        attempts = load_json(ATTEMPTS_FILE)
+    except RuntimeError:
+        attempts = []
     attempts.append(attempt)
     save_json(ATTEMPTS_FILE, attempts)
 
@@ -271,12 +439,30 @@ def api_save_attempt():
 @login_required
 @teacher_required
 def teacher_dashboard():
-    """Teacher dashboard — view all attempts, upload scenarios, reset students."""
+    """Teacher dashboard — view attempts, manage users, scenarios, settings."""
     scenarios = load_scenarios()
-    attempts  = load_json(ATTEMPTS_FILE)
-    users     = load_json(USERS_FILE)
+    try:
+        attempts = load_json(ATTEMPTS_FILE)
+    except RuntimeError:
+        attempts = []
+    users    = load_json(USERS_FILE)
+    settings = get_settings()
 
-    # Group attempts by student for display
+    students     = [get_student(s) for s in users.get('students', [])]
+    scenario_ids = list(scenarios.keys())
+
+    # Build gradebook: {username: {scenario_id: best_score}}
+    gradebook = {st['username']: {} for st in students}
+    for attempt in attempts:
+        if attempt.get('duel'):
+            continue  # gradebook tracks individual scenario performance only, not competitive duels
+        uname = attempt.get('username', '')
+        sid   = attempt.get('scenario_id', '')
+        score = attempt.get('total_score', 0)
+        if uname in gradebook and sid in scenario_ids:
+            if score > gradebook[uname].get(sid, -1):
+                gradebook[uname][sid] = score
+
     grouped = {}
     for attempt in sorted(attempts, key=lambda a: a.get('timestamp', ''), reverse=True):
         uname = attempt.get('username', 'unknown')
@@ -285,9 +471,13 @@ def teacher_dashboard():
     return render_template(
         'teacher.html',
         scenarios=scenarios,
+        scenario_list=list(scenarios.values()),
         grouped_attempts=grouped,
-        students=users.get('students', []),
+        students=students,
         all_attempts=attempts,
+        gradebook=gradebook,
+        scenario_ids=scenario_ids,
+        settings=settings,
     )
 
 
@@ -306,14 +496,13 @@ def teacher_upload():
         return redirect(url_for('teacher_dashboard'))
 
     if f and allowed_file(f.filename):
-        # Validate that the file is valid JSON with required fields
         try:
-            content = f.read()
+            content       = f.read()
             scenario_data = json.loads(content)
             if 'id' not in scenario_data or 'phases' not in scenario_data:
                 flash('Invalid scenario JSON: missing "id" or "phases".', 'danger')
                 return redirect(url_for('teacher_dashboard'))
-            # Use the scenario id as the filename for consistency
+            # Use secure_filename to prevent path traversal
             safe_name = secure_filename(scenario_data['id'] + '.json')
             save_path = os.path.join(SCENARIOS_DIR, safe_name)
             with open(save_path, 'w', encoding='utf-8') as fh:
@@ -338,13 +527,165 @@ def teacher_reset():
     if not username:
         return jsonify({'error': 'username required'}), 400
 
-    attempts = load_json(ATTEMPTS_FILE)
+    try:
+        attempts = load_json(ATTEMPTS_FILE)
+    except RuntimeError:
+        attempts = []
     filtered = [a for a in attempts if a.get('username') != username]
     save_json(ATTEMPTS_FILE, filtered)
 
     removed = len(attempts) - len(filtered)
     return jsonify({'status': 'ok', 'removed': removed})
 
+
+@app.route('/teacher/add_user', methods=['POST'])
+@login_required
+@teacher_required
+def teacher_add_user():
+    """Add a new student account."""
+    username = request.form.get('username', '').strip().lower()
+    name     = request.form.get('name', '').strip()
+    email    = request.form.get('email', '').strip().lower()
+    password = request.form.get('password', '').strip()
+
+    if not username:
+        flash('Username is required.', 'danger')
+        return redirect(url_for('teacher_dashboard'))
+
+    users = load_json(USERS_FILE)
+    for s in users.get('students', []):
+        sd = get_student(s)
+        if sd['username'] == username:
+            flash(f'Username "{username}" already exists.', 'danger')
+            return redirect(url_for('teacher_dashboard'))
+
+    new_student = {
+        'username':      username,
+        'name':          name or username.title(),
+        'email':         email,
+        'password_hash': generate_password_hash(password) if password else '',
+    }
+    users.setdefault('students', []).append(new_student)
+    save_json(USERS_FILE, users)
+    flash(f'Student "{username}" added successfully.', 'success')
+    return redirect(url_for('teacher_dashboard'))
+
+
+@app.route('/teacher/delete_user', methods=['POST'])
+@login_required
+@teacher_required
+def teacher_delete_user():
+    """Remove a student and their attempts."""
+    data     = request.get_json(force=True) or {}
+    username = data.get('username', '').strip()
+
+    if not username:
+        return jsonify({'error': 'username required'}), 400
+
+    users  = load_json(USERS_FILE)
+    before = len(users.get('students', []))
+    users['students'] = [
+        s for s in users.get('students', [])
+        if get_student(s)['username'] != username
+    ]
+    if len(users['students']) == before:
+        return jsonify({'error': 'User not found'}), 404
+
+    save_json(USERS_FILE, users)
+
+    try:
+        attempts = load_json(ATTEMPTS_FILE)
+    except RuntimeError:
+        attempts = []
+    save_json(ATTEMPTS_FILE, [a for a in attempts if a.get('username') != username])
+
+    return jsonify({'status': 'ok', 'username': username})
+
+
+@app.route('/teacher/change_password', methods=['POST'])
+@login_required
+@teacher_required
+def teacher_change_password():
+    """Change a student or teacher password."""
+    data         = request.get_json(force=True) or {}
+    username     = data.get('username', '').strip()
+    role         = data.get('role', 'student')
+    new_password = data.get('new_password', '').strip()
+
+    if not username or not new_password:
+        return jsonify({'error': 'username and new_password required'}), 400
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    users    = load_json(USERS_FILE)
+    new_hash = generate_password_hash(new_password)
+
+    if role == 'teacher':
+        for t in users.get('teachers', []):
+            if t['username'] == username:
+                t['password_hash'] = new_hash
+                save_json(USERS_FILE, users)
+                return jsonify({'status': 'ok'})
+        return jsonify({'error': 'Teacher not found'}), 404
+    else:
+        for i, s in enumerate(users.get('students', [])):
+            sd = get_student(s)
+            if sd['username'] == username:
+                sd['password_hash'] = new_hash
+                users['students'][i] = sd
+                save_json(USERS_FILE, users)
+                return jsonify({'status': 'ok'})
+        return jsonify({'error': 'Student not found'}), 404
+
+
+@app.route('/teacher/change_own_password', methods=['POST'])
+@login_required
+@teacher_required
+def teacher_change_own_password():
+    """Allow a teacher to change their own password."""
+    data         = request.get_json(force=True) or {}
+    current_pw   = data.get('current_password', '')
+    new_password = data.get('new_password', '').strip()
+
+    if not current_pw or not new_password:
+        return jsonify({'error': 'current_password and new_password required'}), 400
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    username = session['username']
+    users    = load_json(USERS_FILE)
+    teacher  = next((t for t in users.get('teachers', []) if t['username'] == username), None)
+    if not teacher:
+        return jsonify({'error': 'Teacher not found'}), 404
+    if not check_password_hash(teacher.get('password_hash', ''), current_pw):
+        return jsonify({'error': 'Current password is incorrect'}), 403
+
+    teacher['password_hash'] = generate_password_hash(new_password)
+    save_json(USERS_FILE, users)
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/teacher/update_settings', methods=['POST'])
+@login_required
+@teacher_required
+def teacher_update_settings():
+    """Update portal settings (signup enabled, duel enabled, disabled scenarios)."""
+    users = load_json(USERS_FILE)
+    users.setdefault('settings', {})
+
+    signup_enabled     = request.form.get('signup_enabled') == 'on'
+    duel_enabled       = request.form.get('duel_enabled') == 'on'
+    all_scenario_ids   = list(load_scenarios().keys())
+    enabled_scenarios  = request.form.getlist('enabled_scenarios')
+    disabled_scenarios = [s for s in all_scenario_ids if s not in enabled_scenarios]
+
+    users['settings']['signup_enabled']    = signup_enabled
+    users['settings']['duel_enabled']      = duel_enabled
+    users['settings']['disabled_scenarios'] = disabled_scenarios
+
+    save_json(USERS_FILE, users)
+    flash('Settings updated.', 'success')
+    return redirect(url_for('teacher_dashboard'))
 
 
 # ── Duel routes ───────────────────────────────────────────────────────────────
@@ -353,6 +694,10 @@ def teacher_reset():
 @login_required
 def duel_lobby():
     """Render the Red vs Blue Duel lobby page."""
+    settings = get_settings()
+    if not settings.get('duel_enabled', True):
+        flash('Duel mode is currently disabled.', 'warning')
+        return redirect(url_for('dashboard'))
     return render_template(
         'lobby.html',
         analyst_defenses=duel_engine.ANALYST_DEFENSES,
@@ -369,7 +714,6 @@ def duel_game(lobby_id):
         flash('Game not found.', 'danger')
         return redirect(url_for('duel_lobby'))
 
-    # Determine role
     if game['attacker']['username'] == username:
         role = 'attacker'
     elif game['analyst']['username'] == username:
@@ -396,6 +740,51 @@ def on_connect():
     pass
 
 
+@socketio.on('disconnect')
+def on_disconnect():
+    """Client disconnected — clean up game and lobby state."""
+    sid = request.sid
+
+    # Handle active game disconnect
+    lobby_id = sid_to_game.pop(sid, None)
+    if lobby_id:
+        game = duel_engine.games.get(lobby_id)
+        if game and game.get('status') != 'ended':
+            username     = session.get('username', '')
+            opponent_sid = _get_opponent_sid(game, username)
+            duel_engine.games.pop(lobby_id, None)
+            if opponent_sid:
+                socketio.emit('opponent_left', {
+                    'msg': 'Your opponent disconnected. The game has ended.'
+                }, to=opponent_sid)
+
+    # Handle lobby disconnect
+    lobby_id = sid_to_lobby.pop(sid, None)
+    if lobby_id:
+        username = session.get('username', '')
+        if username:
+            updated = duel_engine.leave_lobby(lobby_id, username)
+            if updated:
+                socketio.emit('player_left', {
+                    'lobby_id': lobby_id,
+                    'players': [p['username'] for p in updated['players']],
+                }, to=lobby_id)
+            socketio.emit(
+                'update_lobbies',
+                {'lobbies': duel_engine.get_lobbies_list()},
+                broadcast=True,
+            )
+
+
+def _get_opponent_sid(game, username):
+    """Return the SID of the player who is NOT *username*."""
+    if game['attacker']['username'] == username:
+        return game['analyst'].get('sid')
+    elif game['analyst']['username'] == username:
+        return game['attacker'].get('sid')
+    return None
+
+
 @socketio.on('create_lobby')
 def on_create_lobby(data):
     """
@@ -408,11 +797,11 @@ def on_create_lobby(data):
         emit('error', {'msg': 'Not authenticated.'})
         return
 
-    name = data.get('lobby_name', '').strip()
+    name  = data.get('lobby_name', '').strip()
     lobby = duel_engine.create_lobby(name, username, request.sid)
     join_room(lobby['id'])
+    sid_to_lobby[request.sid] = lobby['id']
     emit('lobby_created', {'lobby_id': lobby['id'], 'lobby_name': lobby['name']})
-    # Broadcast updated list to everyone on the lobby page
     emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
 
 
@@ -435,20 +824,19 @@ def on_join_lobby(data):
         return
 
     join_room(lobby_id)
-    # Notify the room that a player joined
+    sid_to_lobby[request.sid] = lobby_id
     emit('player_joined', {
         'lobby_id': lobby_id,
         'players': [p['username'] for p in lobby['players']],
     }, to=lobby_id)
     emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
 
-    # Auto-start game when two players are present
     if len(lobby['players']) == 2:
         game = duel_engine.start_game(lobby_id)
         emit('start_game', {
             'lobby_id': lobby_id,
             'attacker': game['attacker']['username'],
-            'analyst': game['analyst']['username'],
+            'analyst':  game['analyst']['username'],
         }, to=lobby_id)
         emit('update_lobbies', {'lobbies': duel_engine.get_lobbies_list()}, broadcast=True)
 
@@ -465,8 +853,9 @@ def on_leave_lobby(data):
         return
 
     lobby_id = data.get('lobby_id', '')
-    updated = duel_engine.leave_lobby(lobby_id, username)
+    updated  = duel_engine.leave_lobby(lobby_id, username)
     leave_room(lobby_id)
+    sid_to_lobby.pop(request.sid, None)
 
     if updated:
         emit('player_left', {
@@ -486,29 +875,56 @@ def on_get_lobbies():
 def on_join_game_room(data):
     """
     Join the Socket.IO room for a specific game and receive the initial state.
+    Also updates the player's SID in the game state (new connection after redirect).
 
     Data: { lobby_id: str }
     """
     username = session.get('username')
     lobby_id = data.get('lobby_id', '')
-    game = duel_engine.games.get(lobby_id)
+    game     = duel_engine.games.get(lobby_id)
     if not game:
         emit('error', {'msg': 'Game not found.'})
         return
 
     join_room(lobby_id)
 
-    # Determine role and send full initial state
+    # Update the player's SID (connection changes after page redirect)
+    role = None
     if game['attacker']['username'] == username:
+        game['attacker']['sid'] = request.sid
         role = 'attacker'
     elif game['analyst']['username'] == username:
+        game['analyst']['sid'] = request.sid
         role = 'analyst'
     else:
         emit('error', {'msg': 'You are not a player in this game.'})
         return
 
+    sid_to_game[request.sid] = lobby_id
+
     state = duel_engine.get_game_state_for_player(lobby_id, role)
     emit('update_game_state', state)
+
+
+@socketio.on('leave_game')
+def on_leave_game(data):
+    """
+    Explicit leave_game event — same cleanup as a disconnect.
+
+    Data: { lobby_id: str }
+    """
+    username = session.get('username', '')
+    lobby_id = data.get('lobby_id', '')
+    game     = duel_engine.games.get(lobby_id)
+    sid_to_game.pop(request.sid, None)
+
+    if game and game.get('status') != 'ended':
+        opponent_sid = _get_opponent_sid(game, username)
+        duel_engine.games.pop(lobby_id, None)
+        if opponent_sid:
+            socketio.emit('opponent_left', {
+                'msg': 'Your opponent left the game.'
+            }, to=opponent_sid)
 
 
 @socketio.on('select_defenses')
@@ -535,7 +951,6 @@ def on_select_defenses(data):
         emit('error', {'msg': err})
         return
 
-    # Broadcast updated state to both players
     _broadcast_game_state(lobby_id)
 
 
@@ -546,8 +961,8 @@ def on_player_action(data):
 
     Data: { lobby_id: str, action_id: str }
     """
-    username = session.get('username')
-    lobby_id = data.get('lobby_id', '')
+    username  = session.get('username')
+    lobby_id  = data.get('lobby_id', '')
     action_id = data.get('action_id', '')
 
     game = duel_engine.games.get(lobby_id)
@@ -567,7 +982,6 @@ def on_player_action(data):
         emit('error', {'msg': err})
         return
 
-    # If the game ended, save the result
     if state['status'] == 'ended':
         duel_engine.save_duel_result(ATTEMPTS_FILE, lobby_id, load_json, save_json)
 
@@ -596,7 +1010,6 @@ def _broadcast_game_state(lobby_id: str) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    # Ensure data directory exists
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(SCENARIOS_DIR, exist_ok=True)
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
